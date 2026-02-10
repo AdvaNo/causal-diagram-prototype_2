@@ -25,5 +25,6 @@ namespace CausalDiagram.Core.Models
         [JsonIgnore] // чтобы не сериализовать визуальные состояния
         public bool IsHighlighted { get; set; } = false;
 
+
     }
 }

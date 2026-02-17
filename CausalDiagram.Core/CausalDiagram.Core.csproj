@@ -49,9 +49,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Commands\AddEdgeCommand.cs" />
+    <Compile Include="Commands\AddNodeCommand.cs" />
     <Compile Include="Commands\CommandManager.cs" />
+    <Compile Include="Commands\DeleteNodeCommand.cs" />
     <Compile Include="Commands\EdgeCommands.cs" />
+    <Compile Include="Commands\ICommand.cs" />
+    <Compile Include="Commands\MoveNodeCommand.cs" />
     <Compile Include="Commands\NodeCommands.cs" />
+    <Compile Include="Commands\PasteCommand.cs" />
     <Compile Include="Commands\PropertyCommands.cs" />
     <Compile Include="Commands\TransformCommands.cs" />
     <Compile Include="Controllers\InteractionController.cs" />

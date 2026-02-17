@@ -93,41 +93,54 @@ namespace CausalDiagram.Controllers
         {
             if (_primaryDraggedNode != null)
             {
-                // Вычисляем дельту перемещения (на сколько сдвинулся главный узел)
-                float newX = canvasPos.X - _dragOffset.X;
-                float newY = canvasPos.Y - _dragOffset.Y;
+                // 1. Вычисляем, куда МЫШКА хочет передвинуть главный узел
+                float targetX = canvasPos.X - _dragOffset.X;
+                float targetY = canvasPos.Y - _dragOffset.Y;
 
-                float deltaX = newX - _primaryDraggedNode.X;
-                float deltaY = newY - _primaryDraggedNode.Y;
+                // 2. Вычисляем дельту (желаемый сдвиг)
+                float deltaX = targetX - _primaryDraggedNode.X;
+                float deltaY = targetY - _primaryDraggedNode.Y;
 
-                // Двигаем все выделенные узлы на эту дельту
-                bool canMove = true;
-                foreach (var id in SelectedNodeIds)
+                // Если сдвига нет, ничего не делаем
+                if (deltaX == 0 && deltaY == 0) return;
+
+                // 3. ПРОВЕРКА ГРАНИЦ ДЛЯ ВСЕЙ ГРУППЫ
+                // Нам нужно найти крайние точки всей выделенной группы узлов
+                float minX = float.MaxValue, maxX = float.MinValue;
+                float minY = float.MaxValue, maxY = float.MinValue;
+
+                var selectedNodes = SelectedNodeIds
+                    .Select(id => _diagram.Nodes.FirstOrDefault(n => n.Id == id))
+                    .Where(n => n != null)
+                    .ToList();
+
+                foreach (var node in selectedNodes)
                 {
-                    var node = _diagram.Nodes.FirstOrDefault(n => n.Id == id);
-                    if (node != null)
-                    {
-                        float nextX = node.X + deltaX;
-                        float nextY = node.Y + deltaY;
-
-                        if (nextX < 20 || nextX > boundary.Width - 20 ||
-                            nextY < 20 || nextY > boundary.Height - 20)
-                        {
-                            canMove = false; // Если хотя бы один узел упрется в стенку, группа встанет
-                            break;
-                        }
-                    }
+                    // Здесь 50 — это примерная половина ширины узла. 
+                    // В идеале брать реальные размеры из Renderer.
+                    if (node.X < minX) minX = node.X;
+                    if (node.X > maxX) maxX = node.X;
+                    if (node.Y < minY) minY = node.Y;
+                    if (node.Y > maxY) maxY = node.Y;
                 }
-                if (canMove)
+
+                // 4. Корректируем дельту, чтобы никто не вышел за границы [20, boundary.Width - 20]
+                // Если тянем влево и выходим за край
+                if (minX + deltaX < 20) deltaX = 20 - minX;
+                // Если тянем вправо под таблицу свойств
+                if (maxX + deltaX > boundary.Width - 20) deltaX = (boundary.Width - 20) - maxX;
+
+                // То же самое для высоты
+                if (minY + deltaY < 20) deltaY = 20 - minY;
+                if (maxY + deltaY > boundary.Height - 20) deltaY = (boundary.Height - 20) - maxY;
+
+                // 5. ПРИМЕНЯЕМ СДВИГ
+                if (deltaX != 0 || deltaY != 0)
                 {
-                    foreach (var id in SelectedNodeIds)
+                    foreach (var node in selectedNodes)
                     {
-                        var node = _diagram.Nodes.FirstOrDefault(n => n.Id == id);
-                        if (node != null)
-                        {
-                            node.X += deltaX;
-                            node.Y += deltaY;
-                        }
+                        node.X += deltaX;
+                        node.Y += deltaY;
                     }
                 }
             }
@@ -139,9 +152,6 @@ namespace CausalDiagram.Controllers
             // ...
         }
 
-        
-
-       
 
         public Node StartNodeForConnection { get; private set; }
         public PointF CurrentTempPoint { get; private set; }

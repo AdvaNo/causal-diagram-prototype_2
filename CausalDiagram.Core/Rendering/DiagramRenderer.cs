@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using CausalDiagram.Core.Models;
@@ -62,6 +63,31 @@ namespace CausalDiagram.Rendering
             var size = CalculateNodeSize(g, node);
             return new RectangleF(node.X - size.Width / 2f, node.Y - size.Height / 2f, size.Width, size.Height);
         }
+
+        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge)
+        {
+            // 1. Сначала рисуем все связи (чтобы они были под узлами)
+            foreach (var edge in diagram.Edges)
+            {
+                // Находим узлы по ID из списка
+                var fromNode = diagram.Nodes.Find(n => n.Id == edge.From);
+                var toNode = diagram.Nodes.Find(n => n.Id == edge.To);
+
+                if (fromNode != null && toNode != null)
+                {
+                    bool isEdgeSelected = (edge == selectedEdge);
+                    DrawConnection(g, fromNode, toNode, isEdgeSelected);
+                }
+            }
+
+            // 2. Затем рисуем все узлы
+            foreach (var node in diagram.Nodes)
+            {
+                bool isSelected = selectedNodeIds.Contains(node.Id);
+                DrawNode(g, node, isSelected);
+            }
+        }
+
         public void DrawNode(Graphics g, Node node, bool isSelected)
         {
             // 1. Считаем реальный размер под текст
@@ -137,7 +163,7 @@ namespace CausalDiagram.Rendering
         }
 
         //СТРЕЛКИ
-        public void DrawConnection(Graphics g, Node from, Node to)
+        public void DrawConnection(Graphics g, Node from, Node to, bool isSelected/* = false*/)
         {
             if (from == null || to == null) return;
 
@@ -153,6 +179,16 @@ namespace CausalDiagram.Rendering
             using (var pen = new Pen(Color.Gray, 2f))
             {
                 // Делаем стрелку более острой: ширина 6, высота 12
+                pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
+                g.DrawLine(pen, startPoint, endPoint);
+            }
+
+            // ВЫБОР ЦВЕТА: если выделено — рисуем синим и толстым, если нет — серым
+            Color penColor = isSelected ? Color.DodgerBlue : Color.Gray;
+            float penWidth = isSelected ? 4f : 2f;
+
+            using (var pen = new Pen(penColor, penWidth))
+            {
                 pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
                 g.DrawLine(pen, startPoint, endPoint);
             }

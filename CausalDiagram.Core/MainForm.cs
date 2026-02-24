@@ -22,6 +22,7 @@ namespace CausalDiagram.Core
         private Panel canvas;
         private PropertyGrid _propertyGrid;
         private Edge _selectedEdge;
+        private ClipboardData _diagramClipboard;
 
         // Наши новые сервисы (внедрение зависимостей "на минималках")
         private readonly ProjectService _projectService = new ProjectService();
@@ -40,6 +41,7 @@ namespace CausalDiagram.Core
 
         // Цвет по умолчанию
         private NodeColor _currentSelectedColor = NodeColor.Yellow;
+        private ToolStripComboBox colorSelector;
 
         //zoom+pan
         private float _zoom = 1.0f;
@@ -60,7 +62,8 @@ namespace CausalDiagram.Core
             this.DoubleBuffered = true; // Важно для отсутствия мерцания!
             this.WindowState = FormWindowState.Maximized;
             this.KeyPreview = true; //чтобы видеть горячие клавиши
-
+            AutoScroll = false;
+            AutoSize = false;
 
             _interaction = new InteractionController(_diagram, _renderer);
 
@@ -127,7 +130,7 @@ namespace CausalDiagram.Core
 
 
             // 1. Создаем сам выпадающий список
-            var colorSelector = new ToolStripComboBox();
+            colorSelector = new ToolStripComboBox();
             colorSelector.DropDownStyle = ComboBoxStyle.DropDownList; // Запрещаем вводить текст руками, только выбор
 
             // 2. Добавляем три варианта
@@ -214,7 +217,7 @@ namespace CausalDiagram.Core
                         g.Transform = matrix;
 
                         // 3. Рисуем диаграмму В БУФЕР
-                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge);
+                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom);
 
                         g.ResetTransform();
                     }
@@ -447,7 +450,7 @@ namespace CausalDiagram.Core
 
                 // Теперь Renderer просто рисует в своих обычных координатах, 
                 // а GDI+ сама их масштабирует и двигает
-                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge);
+                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom);
 
                 e.Graphics.ResetTransform(); // Сбрасываем, чтобы UI (если есть) не уплыл
             };
@@ -472,6 +475,47 @@ namespace CausalDiagram.Core
                 canvas.Invalidate();
             };
 
+            colorSelector.SelectedIndexChanged += (s, e) =>
+            {
+                NodeColor newColor = NodeColor.Yellow; // значение по умолчанию
+
+                // 1. Твоя существующая логика определения цвета
+                switch (colorSelector.SelectedItem.ToString())
+                {
+                    case "Желтый":
+                        newColor = NodeColor.Yellow;
+                        colorSelector.BackColor = Color.LightYellow;
+                        break;
+                    case "Красный":
+                        newColor = NodeColor.Red;
+                        colorSelector.BackColor = Color.LightCoral;
+                        break;
+                    case "Зеленый":
+                        newColor = NodeColor.Green;
+                        colorSelector.BackColor = Color.LightGreen;
+                        break;
+                }
+
+                // Обновляем глобальную переменную для будущих узлов
+                _currentSelectedColor = newColor;
+
+                // 2. НОВАЯ ЛОГИКА: Меняем цвет уже выделенным узлам
+                if (_interaction.SelectedNodeIds.Any())
+                {
+                    var selectedNodes = _diagram.Nodes
+                        .Where(n => _interaction.SelectedNodeIds.Contains(n.Id))
+                        .ToList();
+
+                    // Создаем команду для Undo/Redo (код команды я давал выше)
+                    var command = new ChangeColorCommand(selectedNodes, newColor);
+                    _commandManager.Execute(command);
+
+                    canvas.Invalidate(); // Перерисовываем, чтобы увидеть изменения
+                }
+
+                // 3. Возвращаем фокус на холст (очень важно для горячих клавиш!)
+                canvas.Focus();
+            };
             //canvas.Paint += Canvas_Paint;
             //this.Controls.Add(canvas);
 
@@ -675,6 +719,14 @@ namespace CausalDiagram.Core
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            //if (colorSelector.Control.Focused)
+            //{
+            //    return base.ProcessCmdKey(ref msg, keyData);
+            //}
+            if ((colorSelector != null && colorSelector.Control.Focused) || this.ActiveControl is TextBox)
+            {
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
             // Обработка Ctrl + Z (Undo)
             if (keyData == (Keys.Control | Keys.Z))
             {
@@ -701,53 +753,55 @@ namespace CausalDiagram.Core
             // --- Копирование (Ctrl + C) ---
             if (keyData == (Keys.Control | Keys.C))
             {
-                _clipboard.Clear();
-                var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id)).ToList();
+                //_clipboard.Clear();
+                //var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id)).ToList();
 
-                foreach (var node in selectedNodes)
-                {
-                    // Создаем "клон" объекта, чтобы оригинал и копия не были связаны
-                    _clipboard.Add(new Node
-                    {
-                        Title = node.Title,
-                        Description = node.Description,
-                        ColorName = node.ColorName,
-                        X = node.X,
-                        Y = node.Y
-                    });
-                }
+                //foreach (var node in selectedNodes)
+                //{
+                //    // Создаем "клон" объекта, чтобы оригинал и копия не были связаны
+                //    _clipboard.Add(new Node
+                //    {
+                //        Title = node.Title,
+                //        Description = node.Description,
+                //        ColorName = node.ColorName,
+                //        X = node.X,
+                //        Y = node.Y
+                //    });
+                //}
+                CopySelected();
                 return true;
             }
 
             // --- Вставка (Ctrl + V) ---
             if (keyData == (Keys.Control | Keys.V))
             {
-                if (_clipboard.Count > 0)
-                {
-                    var nodesToPaste = new List<Node>();
-                    _interaction.SelectedNodeIds.Clear();
+                //if (_clipboard.Count > 0)
+                //{
+                //    var nodesToPaste = new List<Node>();
+                //    _interaction.SelectedNodeIds.Clear();
 
-                    foreach (var item in _clipboard)
-                    {
-                        var newNode = new Node
-                        {
-                            Id = Guid.NewGuid(),
-                            Title = item.Title + " (копия)",
-                            Description = item.Description,
-                            ColorName = item.ColorName,
-                            X = item.X + 20,
-                            Y = item.Y + 20
-                        };
-                        nodesToPaste.Add(newNode);
-                        _interaction.SelectedNodeIds.Add(newNode.Id);
-                    }
+                //    foreach (var item in _clipboard)
+                //    {
+                //        var newNode = new Node
+                //        {
+                //            Id = Guid.NewGuid(),
+                //            Title = item.Title + " (копия)",
+                //            Description = item.Description,
+                //            ColorName = item.ColorName,
+                //            X = item.X + 20,
+                //            Y = item.Y + 20
+                //        };
+                //        nodesToPaste.Add(newNode);
+                //        _interaction.SelectedNodeIds.Add(newNode.Id);
+                //    }
 
-                    // Создаем и выполняем команду вставки
-                    var command = new PasteCommand(_diagram, nodesToPaste);
-                    _commandManager.Execute(command);
+                //    // Создаем и выполняем команду вставки
+                //    var command = new PasteCommand(_diagram, nodesToPaste);
+                //    _commandManager.Execute(command);
 
-                    canvas.Invalidate();
-                }
+                //    canvas.Invalidate();
+                //}
+                Paste();
                 return true;
             }
 
@@ -767,7 +821,7 @@ namespace CausalDiagram.Core
                 var fromNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.From);
                 var toNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.To);
                 bool isEdgeSelected = (edge == _selectedEdge);
-                _renderer.DrawConnection(g, fromNode, toNode, isEdgeSelected);
+                _renderer.DrawConnection(g, fromNode, toNode, isEdgeSelected, _zoom);
             }
             // Рисуем временную линию связи
             if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
@@ -811,40 +865,108 @@ namespace CausalDiagram.Core
 
         private void CopySelected()
         {
-            _clipboard.Clear();
-            var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id));
-            foreach (var node in selectedNodes)
-            {
-                // Создаем глубокую копию, чтобы не менять оригиналы
-                _clipboard.Add(new Node
-                {
-                    Title = node.Title + " (копия)",
-                    X = node.X,
-                    Y = node.Y,
-                    ColorName = node.ColorName
-                });
-            }
+            var selectedIds = _interaction.SelectedNodeIds;
+            if (selectedIds.Count == 0) return;
+
+            _diagramClipboard = new ClipboardData();
+
+            // 1. Копируем узлы
+            _diagramClipboard.Nodes = _diagram.Nodes
+                 .Where(n => selectedIds.Contains(n.Id))
+                 .Select(n => new Node // Прямо здесь создаем новый экземпляр
+                 {
+                     Id = n.Id,
+                     Title = n.Title,
+                     X = n.X,
+                     Y = n.Y,
+                     ColorName = n.ColorName
+                 })
+                 .ToList();
+
+            // 2. Копируем связи, которые соединяют ТОЛЬКО выбранные узлы
+            _diagramClipboard.Edges = _diagram.Edges
+                .Where(e => selectedIds.Contains(e.From) && selectedIds.Contains(e.To))
+                .Select(e => new Edge { From = e.From, To = e.To }) // Копируем структуру
+                .ToList();
+            //_clipboard.Clear();
+            //var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id));
+            //foreach (var node in selectedNodes)
+            //{
+            //    // Создаем глубокую копию, чтобы не менять оригиналы
+            //    _clipboard.Add(new Node
+            //    {
+            //        Title = node.Title + " (копия)",
+            //        X = node.X,
+            //        Y = node.Y,
+            //        ColorName = node.ColorName
+            //    });
+            //}
         }
 
         private void Paste()
         {
-            if (_clipboard.Count == 0) return;
+            if (_diagramClipboard == null || _diagramClipboard.Nodes.Count == 0) return;
 
-            _interaction.SelectedNodeIds.Clear();
-            foreach (var clone in _clipboard)
+            // Словарь для сопоставления старых ID из буфера с новыми ID в диаграмме
+            var idMap = new Dictionary<Guid, Guid>();
+            var newNodes = new List<Node>();
+            var newEdges = new List<Edge>();
+
+            // Шаг 1: Создаем новые узлы и заполняем карту ID
+            foreach (var oldNode in _diagramClipboard.Nodes)
             {
-                var newNode = new Node
-                {
-                    Id = Guid.NewGuid(), // Новый ID обязателен!
-                    Title = clone.Title,
-                    X = clone.X + 20, // Сдвиг, чтобы не слиплись
-                    Y = clone.Y + 20,
-                    ColorName = clone.ColorName
-                };
-                _diagram.Nodes.Add(newNode);
-                _interaction.SelectedNodeIds.Add(newNode.Id);
+                var newNode = oldNode.Clone();
+                var oldId = newNode.Id;
+                newNode.Id = Guid.NewGuid(); // Генерируем новый ID
+                newNode.Title += " (копия)"; // Твое пожелание из списка придирок
+
+                // Смещаем копию чуть в сторону, чтобы она не перекрыла оригинал
+                newNode.X += 20;
+                newNode.Y += 20;
+
+                idMap[oldId] = newNode.Id;
+                newNodes.Add(newNode);
             }
+
+            // Шаг 2: Создаем новые связи, используя карту ID
+            foreach (var oldEdge in _diagramClipboard.Edges)
+            {
+                if (idMap.ContainsKey(oldEdge.From) && idMap.ContainsKey(oldEdge.To))
+                {
+                    newEdges.Add(new Edge
+                    {
+                        From = idMap[oldEdge.From],
+                        To = idMap[oldEdge.To]
+                    });
+                }
+            }
+
+            // Шаг 3: Обертываем это в команду для Undo
+            var command = new PasteGroupCommand(_diagram, newNodes, newEdges);
+            _commandManager.Execute(command);
+
+            // Выделяем вставленные объекты для удобства
+            _interaction.SelectedNodeIds.Clear();
+            foreach (var n in newNodes) _interaction.SelectedNodeIds.Add(n.Id);
+
             canvas.Invalidate();
+            //if (_clipboard.Count == 0) return;
+
+            //_interaction.SelectedNodeIds.Clear();
+            //foreach (var clone in _clipboard)
+            //{
+            //    var newNode = new Node
+            //    {
+            //        Id = Guid.NewGuid(), // Новый ID обязателен!
+            //        Title = clone.Title,
+            //        X = clone.X + 20, // Сдвиг, чтобы не слиплись
+            //        Y = clone.Y + 20,
+            //        ColorName = clone.ColorName
+            //    };
+            //    _diagram.Nodes.Add(newNode);
+            //    _interaction.SelectedNodeIds.Add(newNode.Id);
+            //}
+            //canvas.Invalidate();
         }
 
         private void ShowEditBox(Node node)

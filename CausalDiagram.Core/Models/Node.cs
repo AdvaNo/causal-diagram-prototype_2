@@ -48,6 +48,16 @@ namespace CausalDiagram.Core.Models
 
         // [DisplayName("...")] меняет название в таблице
         // [Description("...")] добавляет описание внизу 
-
+        public Node Clone()
+        {
+            return new Node
+            {
+                Id = this.Id, // Копируем текущий ID (в методе Paste мы его заменим)
+                Title = this.Title,
+                X = this.X,
+                Y = this.Y,
+                ColorName = this.ColorName
+            };
+        }
     }
 }

@@ -81,6 +81,7 @@
   <ItemGroup>
     <Compile Include="Commands\AddEdgeCommand.cs" />
     <Compile Include="Commands\AddNodeCommand.cs" />
+    <Compile Include="Commands\ChangeColorCommand.cs" />
     <Compile Include="Commands\CommandManager.cs" />
     <Compile Include="Commands\DeleteEdgeCommand.cs" />
     <Compile Include="Commands\DeleteNodeCommand.cs" />
@@ -89,6 +90,7 @@
     <Compile Include="Commands\MoveNodeCommand.cs" />
     <Compile Include="Commands\NodeCommands.cs" />
     <Compile Include="Commands\PasteCommand.cs" />
+    <Compile Include="Commands\PasteGroupCommand.cs" />
     <Compile Include="Commands\PropertyCommands.cs" />
     <Compile Include="Commands\RenameNodeCommand.cs" />
     <Compile Include="Commands\TransformCommands.cs" />
@@ -103,6 +105,7 @@
     <Compile Include="MainForm.Designer.cs">
       <DependentUpon>MainForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Models\ClipboardData.cs" />
     <Compile Include="Models\Diagram.cs" />
     <Compile Include="Models\Edge.cs" />
     <Compile Include="Models\ForbiddenRule.cs" />

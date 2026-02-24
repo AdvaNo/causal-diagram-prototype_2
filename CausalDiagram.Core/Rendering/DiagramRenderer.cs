@@ -64,7 +64,7 @@ namespace CausalDiagram.Rendering
             return new RectangleF(node.X - size.Width / 2f, node.Y - size.Height / 2f, size.Width, size.Height);
         }
 
-        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge)
+        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom)
         {
             // 1. Сначала рисуем все связи (чтобы они были под узлами)
             foreach (var edge in diagram.Edges)
@@ -76,7 +76,7 @@ namespace CausalDiagram.Rendering
                 if (fromNode != null && toNode != null)
                 {
                     bool isEdgeSelected = (edge == selectedEdge);
-                    DrawConnection(g, fromNode, toNode, isEdgeSelected);
+                    DrawConnection(g, fromNode, toNode, isEdgeSelected,zoom);
                 }
             }
 
@@ -163,7 +163,7 @@ namespace CausalDiagram.Rendering
         }
 
         //СТРЕЛКИ
-        public void DrawConnection(Graphics g, Node from, Node to, bool isSelected/* = false*/)
+        public void DrawConnection(Graphics g, Node from, Node to, bool isSelected/* = false*/, float zoom)
         {
             if (from == null || to == null) return;
 
@@ -175,23 +175,43 @@ namespace CausalDiagram.Rendering
             var startPoint = GetRectBoundaryPointTowards(fromRect, new PointF(to.X, to.Y));
             var endPoint = GetRectBoundaryPointTowards(toRect, new PointF(from.X, from.Y));
 
-            // 3. Рисуем стрелку между этими точками
-            using (var pen = new Pen(Color.Gray, 2f))
-            {
-                // Делаем стрелку более острой: ширина 6, высота 12
-                pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
-                g.DrawLine(pen, startPoint, endPoint);
-            }
+            //float baseWidth = isSelected ? 4f : 2f;
+            //float adjustedWidth = baseWidth / zoom;
+
+            float baseThickness = isSelected ? 4f : 2f;
+            float currentPenWidth = baseThickness / zoom;
+
+
+            float worldArrowW = 8f;
+            float worldArrowH = 20f;
+
+            float finalCapW = worldArrowW / currentPenWidth;
+            float finalCapH = worldArrowH / currentPenWidth;
 
             // ВЫБОР ЦВЕТА: если выделено — рисуем синим и толстым, если нет — серым
             Color penColor = isSelected ? Color.DodgerBlue : Color.Gray;
-            float penWidth = isSelected ? 4f : 2f;
 
-            using (var pen = new Pen(penColor, penWidth))
+
+            // 3. Рисуем стрелку между этими точками
+            using (var pen = new Pen(Color.Gray, 2f))
             {
-                pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
+                if (finalCapW > 0.01f && finalCapH > 0.01f)
+                {
+                    pen.CustomEndCap = new AdjustableArrowCap(finalCapW, finalCapH, true);
+                }
+                g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.DrawLine(pen, startPoint, endPoint);
             }
+
+            
+            //float penWidth = isSelected ? 4f : 2f;
+
+            //using (var pen = new Pen(penColor, penWidth))
+            //{
+            //    pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
+            //    g.DrawLine(pen, startPoint, endPoint);
+            //}
+
         }
     }
 }

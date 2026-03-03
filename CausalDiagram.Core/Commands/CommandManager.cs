@@ -14,11 +14,15 @@ namespace CausalDiagram.Core.Commands
         private readonly Stack<ICommand> _undo = new Stack<ICommand>();
         private readonly Stack<ICommand> _redo = new Stack<ICommand>();
 
+        // Флаг: были ли изменения с момента последнего сохранения
+        public bool IsModified { get; private set; }
+
         public void Execute(ICommand command)
         {
             command.Execute();
             _undo.Push(command);
             _redo.Clear();
+            IsModified = true;
         }
 
         public bool CanUndo => _undo.Count > 0;
@@ -35,6 +39,7 @@ namespace CausalDiagram.Core.Commands
                 var command = _undo.Pop();
                 command.Undo();
                 _redo.Push(command);
+                IsModified = true;
             }
         }
 
@@ -49,6 +54,7 @@ namespace CausalDiagram.Core.Commands
                 var command = _redo.Pop();
                 command.Execute();
                 _undo.Push(command);
+                IsModified = true;
             }
         }
 
@@ -56,6 +62,7 @@ namespace CausalDiagram.Core.Commands
         {
             _undo.Clear();
             _redo.Clear();
+            IsModified = false;
         }
 
         /// <summary>
@@ -70,6 +77,12 @@ namespace CausalDiagram.Core.Commands
             // Как и при обычном Execute, очищаем стек Redo, 
             // так как ветка истории изменилась
             _redo.Clear();
+        }
+
+        //сброс флага после сохранения
+        public void ResetModified()
+        {
+            IsModified = false;
         }
     }
 }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Windows.Forms;
 using CausalDiagram.Core.Models;
 
 namespace CausalDiagram.Rendering
@@ -64,8 +65,12 @@ namespace CausalDiagram.Rendering
             return new RectangleF(node.X - size.Width / 2f, node.Y - size.Height / 2f, size.Width, size.Height);
         }
 
-        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom)
+        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom, PointF panOffset, bool showGrid, int gridStep)
         {
+            //if (showGrid)
+            //{
+            //    DrawGrid(g, zoom, panOffset, gridStep);
+            //}
             // 1. Сначала рисуем все связи (чтобы они были под узлами)
             foreach (var edge in diagram.Edges)
             {
@@ -85,6 +90,29 @@ namespace CausalDiagram.Rendering
             {
                 bool isSelected = selectedNodeIds.Contains(node.Id);
                 DrawNode(g, node, isSelected);
+            }
+        }
+        private void DrawGrid(Graphics g, float zoom, PointF panOffset, int gridStep)
+        {
+            using (Pen gridPen = new Pen(Color.FromArgb(235, 235, 235), 1f)) // Очень светлый серый
+            {
+                float steppedGrid = gridStep * zoom;
+
+                // Вычисляем начальные точки, чтобы сетка была бесконечной при панорамировании
+                float startX = panOffset.X % steppedGrid;
+                float startY = panOffset.Y % steppedGrid;
+
+                // Вертикальные линии
+                for (float x = startX; x < g.ClipBounds.Width + steppedGrid; x += steppedGrid)
+                {
+                    g.DrawLine(gridPen, x, 0, x, g.VisibleClipBounds.Height);
+                }
+
+                // Горизонтальные линии
+                for (float y = startY; y < g.ClipBounds.Height + steppedGrid; y += steppedGrid)
+                {
+                    g.DrawLine(gridPen, 0, y, g.VisibleClipBounds.Width, y);
+                }
             }
         }
 

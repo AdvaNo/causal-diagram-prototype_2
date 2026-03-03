@@ -10,6 +10,10 @@ using CausalDiagram.Core.Commands;
 using System.Collections.Generic;
 using CausalDiagram.Commands;
 using System.Drawing.Drawing2D;
+using System.IO;// Для работы с файлами
+using System.Text.Json; // Для JSON
+using System.Xml.Serialization; // Для XML
+
 
 
 namespace CausalDiagram.Core
@@ -24,7 +28,7 @@ namespace CausalDiagram.Core
         private Edge _selectedEdge;
         private ClipboardData _diagramClipboard;
 
-        // Наши новые сервисы (внедрение зависимостей "на минималках")
+        // Новые сервисы 
         private readonly ProjectService _projectService = new ProjectService();
         private readonly DiagramRenderer _renderer = new DiagramRenderer();
         private InteractionController _interaction;
@@ -47,6 +51,35 @@ namespace CausalDiagram.Core
         private float _zoom = 1.0f;
         private Point _lastMousePos; // Для отслеживания перемещения мыши при панорамировании
         private bool _isPanning = false; // Зажат ли "режим перемещения"
+
+        // Путь к текущему файлу
+        private string _currentFilePath = null;
+
+        // Путь на случай эксренных сохранений
+        private ToolStripStatusLabel lblStatusInfo;
+        private readonly string _autosavePath = Path.Combine(Path.GetTempPath(), "causal_recovery.json");
+
+        //статус диаграммы
+        StatusStrip statusStrip;
+
+        //Сетка
+        private bool _showGrid = false;
+        private const int GridStep = 20;
+
+        //для кнопок при Новом открытии
+        private ToolStripButton btnSelect; 
+        private ToolStripButton btnAdd;
+        private ToolStripButton btnSave;
+        private ToolStripButton btnLoad;
+        private ToolStripButton btnConnect;
+        private ToolStripButton btnDelete;
+        private ToolStripButton btnUndo;
+        private ToolStripButton btnRedo;
+        private ToolStripButton newFileButton;
+
+        //статусы зума и наличия
+        private ToolStripStatusLabel lblCount;
+        private ToolStripStatusLabel lblZoom;
 
         public MainForm()
         {
@@ -73,61 +106,81 @@ namespace CausalDiagram.Core
             ToolStrip toolStrip = new ToolStrip();
 
             // 2. Кнопка "Выбрать" (курсор)
-            var btnSelect = new ToolStripButton("Выбрать") { CheckOnClick = true, Checked = true };
-            btnSelect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Select;
+            btnSelect = new ToolStripButton("Выбрать") { CheckOnClick = true, Checked = true };
+            btnSelect.Click += (s, e) => SetMode(btnSelect, EditorMode.Select);
+            //btnSelect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Select;
 
             // 3. Кнопка "Добавить узел"
-            var btnAdd = new ToolStripButton("Новый узел") { CheckOnClick = true };
-            btnAdd.Click += (s, e) => _interaction.CurrentMode = EditorMode.AddNode;
+            btnAdd = new ToolStripButton("Новый узел") { CheckOnClick = true };
+            btnAdd.Click += (s, e) => SetMode(btnAdd, EditorMode.AddNode);
+            //btnAdd.Click += (s, e) => _interaction.CurrentMode = EditorMode.AddNode;
 
-            // 4. Логика взаимоисключения кнопок (чтобы нельзя было выбрать обе сразу)
-            btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) btnAdd.Checked = false; };
-            btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) btnSelect.Checked = false; };
-
-            // 5. Кнопки Сохранить/Загрузить
-            var btnSave = new ToolStripButton("Сохранить");
-            btnSave.Click += (s, e) => SaveProject();
-
-            var btnLoad = new ToolStripButton("Загрузить");
-            btnLoad.Click += (s, e) => LoadProject();
-
+            //// 4. Логика взаимоисключения кнопок (чтобы нельзя было выбрать обе сразу)
+            //btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) btnAdd.Checked = false; };
+            //btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) btnSelect.Checked = false; };
+            //btnSelect.Click += (s, e) => SetMode(btnSelect);
+            //btnAdd.Click += (s, e) => SetMode(btnAdd);
             // Добавляем всё на панель
-            toolStrip.Items.AddRange(new ToolStripItem[] { btnSelect, btnAdd, new ToolStripSeparator(), btnSave, btnLoad });
-
+            //toolStrip.Items.AddRange(new ToolStripItem[] { btnSelect, btnAdd, new ToolStripSeparator(), btnSave, btnLoad });
             // Добавляем панель в форму (она сама прилипнет к верху)
-            this.Controls.Add(toolStrip);
+            //this.Controls.Add(toolStrip);
 
             // 1. Создаем кнопку
-            var btnConnect = new ToolStripButton("Провести связь") { CheckOnClick = true };
-            btnConnect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Connect;
-
+            btnConnect = new ToolStripButton("Провести связь") { CheckOnClick = true };
+            btnConnect.Click += (s, e) => SetMode(btnConnect, EditorMode.Connect);
+            //btnConnect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Connect;
             // 2. Добавляем её в логику взаимоисключения (чтобы только одна кнопка была нажата)
-            btnConnect.CheckedChanged += (s, e) => {
-                if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            };
+            //btnConnect.CheckedChanged += (s, e) => {
+            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
+            //};
             // Не забудь добавить проверку для других кнопок, чтобы они выключали btnConnect!
-            btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) { btnAdd.Checked = false; btnConnect.Checked = false; } };
-            btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) { btnSelect.Checked = false; btnConnect.Checked = false; } };
-
+            //btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) { btnAdd.Checked = false; btnConnect.Checked = false; } };
+            //btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) { btnSelect.Checked = false; btnConnect.Checked = false; } };
             // 3. Добавь кнопку на панель
-            toolStrip.Items.Insert(2, btnConnect); // Вставляем после кнопки "Новый узел"
+            //toolStrip.Items.Insert(2, btnConnect); // Вставляем после кнопки "Новый узел"
 
-            var btnDelete = new ToolStripButton("Удалить") { CheckOnClick = true };
+            btnDelete = new ToolStripButton("Удалить");
             btnDelete.Click += (s, e) => DeleteSelectedItems();
 
-            btnDelete.CheckedChanged += (s, e) => {
-                if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            };
+            //btnDelete.CheckedChanged += (s, e) => {
+            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
+            //};
+            //toolStrip.Items.Insert(3, btnDelete);
 
-            toolStrip.Items.Insert(3, btnDelete);
-
-            var btnUndo = new ToolStripButton("Отменить") { CheckOnClick = true };
+            btnUndo = new ToolStripButton("Отменить");
             btnUndo.Click += (s, e) => { _commandManager.Undo(); canvas.Invalidate(); };
-            btnUndo.CheckedChanged += (s, e) => {
-                if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            };
-            toolStrip.Items.Insert(4, btnUndo);
+            //btnUndo.CheckedChanged += (s, e) => {
+            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
+            //};
+            //toolStrip.Items.Insert(4, btnUndo);
 
+            // 5. Кнопки Сохранить/Загрузить
+            btnSave = new ToolStripButton("Сохранить");
+            btnSave.Click += (s, e) => SaveProject();
+
+            btnLoad = new ToolStripButton("Загрузить");
+            btnLoad.Click += (s, e) => LoadProject();
+
+            newFileButton = new ToolStripButton("Новый файл") { CheckOnClick = true };
+            newFileButton.Click += (s, e) => NewDiagram();
+            //toolStrip.Items.Insert(5, newFileButton);
+
+            toolStrip.Items.AddRange(new ToolStripItem[] {
+                btnSelect, btnAdd, btnConnect,
+                new ToolStripSeparator(),
+                btnDelete, btnUndo,
+                new ToolStripSeparator(),
+                btnSave, btnLoad, newFileButton
+            });
+
+            this.Controls.Add(toolStrip);
+
+            var btnGrid = new ToolStripButton("Сетка") { CheckOnClick = true, Checked = _showGrid };
+            btnGrid.Click += (s, e) => {
+                _showGrid = btnGrid.Checked;
+                canvas.Invalidate(); // Перерисовать, чтобы сетка исчезла или появилась
+            };
+            toolStrip.Items.Add(btnGrid);
 
             // 1. Создаем сам выпадающий список
             colorSelector = new ToolStripComboBox();
@@ -185,22 +238,19 @@ namespace CausalDiagram.Core
                 System.Reflection.BindingFlags.NonPublic,
                 null, canvas, new object[] { true });
 
+            statusStrip = new StatusStrip();
+            lblCount = new ToolStripStatusLabel { Text = "Узлов: 0, Связей: 0" };
+            lblZoom = new ToolStripStatusLabel { Text = "Зум: 100%"/*, Alignment = ToolStripItemAlignment.Right */};
+            //зум справа => добавим "пружину" (пустой лейбл, который съедает место)
+            var spring = new ToolStripStatusLabel { Spring = true };
+
+            statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, spring, lblZoom });
+            this.Controls.Add(statusStrip);
+
             //canvas.Paint += Canvas_Paint;
             this.Controls.Add(canvas);
 
             canvas.Paint += (s, e) => {
-                //e.Graphics.Clear(Color.White);
-                //e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-
-                //Matrix matrix = new Matrix();
-                //matrix.Translate(_panOffset.X, _panOffset.Y);
-                //matrix.Scale(_zoom, _zoom);
-                //e.Graphics.Transform = matrix;
-
-                //// ВЫЗОВ: передаем графику, диаграмму и список ID выделенных узлов
-                //_renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds);
-
-                //e.Graphics.ResetTransform();
 
                 using (Bitmap buffer = new Bitmap(canvas.Width, canvas.Height))
                 {
@@ -217,7 +267,7 @@ namespace CausalDiagram.Core
                         g.Transform = matrix;
 
                         // 3. Рисуем диаграмму В БУФЕР
-                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom);
+                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep);
 
                         g.ResetTransform();
                     }
@@ -231,11 +281,7 @@ namespace CausalDiagram.Core
             canvas.MouseDown += (s, e) => {
                 var p = ScreenToCanvas(e.Location);
 
-                //bool isCtrl = ModifierKeys.HasFlag(Keys.Control);
-
                 _selectedEdge = FindEdgeAt(p); // Вызываем метод поиска
-
-              
 
                 Node nodeAtMouse = null;
 
@@ -273,7 +319,6 @@ namespace CausalDiagram.Core
                             _dragStartPositions[node.Id] = (node.X, node.Y);
                         }
                     }
-
                     if (nodeAtMouse != null) _propertyGrid.SelectedObject = nodeAtMouse;
 
 
@@ -314,8 +359,6 @@ namespace CausalDiagram.Core
                     _propertyGrid.Visible = false;// Скрываем, если кликнули по пустому месту
                 }
 
-                
-
                 canvas.Invalidate();
             };
             canvas.MouseMove += (s, e) => {
@@ -329,14 +372,25 @@ namespace CausalDiagram.Core
                 else
                 {
                     _interaction.HandleMouseMove(p, canvas.ClientSize);
-
-                    // Теперь проверяем PrimaryDraggedNode
+                    if (_showGrid && _interaction._primaryDraggedNode != null)
+                    {
+                        // Округляем координаты всех выделенных узлов (если тащим группу) 
+                        // или только главного перетаскиваемого узла
+                        foreach (var nodeId in _interaction.SelectedNodeIds)
+                        {
+                            var node = _diagram.Nodes.Find(n => n.Id == nodeId);
+                            if (node != null)
+                            {
+                                node.X = (float)Math.Round(node.X / GridStep) * GridStep;
+                                node.Y = (float)Math.Round(node.Y / GridStep) * GridStep;
+                            }
+                        }
+                    }
                     if (_interaction._primaryDraggedNode != null)
                     {
                         canvas.Invalidate();
                     }
                 }
-
                 if (_isPanning)
                 {
                     // Вычисляем, на сколько сдвинулась мышь
@@ -379,15 +433,8 @@ namespace CausalDiagram.Core
                         }
                         else
                         {
-                            // Можно добавить звук ошибки или статус в статус-бар
                             MessageBox.Show("Связь между этими узлами уже существует!");
                         }
-                        //// Создаем новую связь (Edge)
-                        //_diagram.Edges.Add(new Edge
-                        //{
-                        //    From = _interaction.StartNodeForConnection.Id,
-                        //    To = endNode.Id
-                        //});
                     }
                     _interaction.EndConnection();
                     canvas.Invalidate();
@@ -412,7 +459,7 @@ namespace CausalDiagram.Core
 
                     if (moves.Count > 0)
                     {
-                        // Создаем команду. Важно: мы не вызываем Execute(), 
+                        // Создаем команду 
                         // так как узлы уже передвинуты мышкой, просто кладем в стек.
                         var moveCommand = new CausalDiagram.Commands.MoveNodeCommand(moves);
                         _commandManager.PushToUndoStack(moveCommand);
@@ -450,9 +497,15 @@ namespace CausalDiagram.Core
 
                 // Теперь Renderer просто рисует в своих обычных координатах, 
                 // а GDI+ сама их масштабирует и двигает
-                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom);
+                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep);
 
                 e.Graphics.ResetTransform(); // Сбрасываем, чтобы UI (если есть) не уплыл
+                
+                // 5. Обновляем цифры в статус-баре (чтобы они менялись плавно во время действий)
+                UpdateStatusIndicators();
+
+                // 4. Рисуем элементы интерфейса поверх всего (Мини-карта)
+                DrawMinimap(e.Graphics);                
             };
 
             canvas.MouseWheel += (s, e) => {
@@ -461,6 +514,8 @@ namespace CausalDiagram.Core
 
                 if (e.Delta > 0) _zoom *= zoomStep;
                 else _zoom /= zoomStep;
+
+                UpdateStatusBar();
 
                 // Ограничим зум, чтобы не уйти в бесконечность
                 _zoom = Math.Max(0.1f, Math.Min(_zoom, 5.0f));
@@ -516,17 +571,28 @@ namespace CausalDiagram.Core
                 // 3. Возвращаем фокус на холст (очень важно для горячих клавиш!)
                 canvas.Focus();
             };
-            //canvas.Paint += Canvas_Paint;
-            //this.Controls.Add(canvas);
 
+            this.FormClosing += (s, e) => {
+                if (!PromptToSave())
+                {
+                    e.Cancel = true; // Останавливаем закрытие
+                }
+            };
+            this.Load += (s, e) => CheckForAutosaveRecovery();
         }
 
-
+        //Не даст закрыть приложение, пока не было сохранения
+        private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (!PromptToSave())
+            {
+                e.Cancel = true; // Отменяем закрытие формы
+            }
+        }
 
         // Вспомогательный метод для перевода координат экрана в координаты диаграммы
         private PointF ScreenToCanvas(Point p)
         {
-            //return new PointF((p.X - _panOffset.X) / _scale, (p.Y - _panOffset.Y) / _scale);
             return new PointF(
                 (p.X - _panOffset.X) / _zoom,
                 (p.Y - _panOffset.Y) / _zoom
@@ -536,61 +602,67 @@ namespace CausalDiagram.Core
         private void Canvas_Paint(object sender, PaintEventArgs e)
         {
             RenderDiagram(e.Graphics);
-            //var g = e.Graphics;
-            //g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            //g.TranslateTransform(_panOffset.X, _panOffset.Y);
-            //g.ScaleTransform(_scale, _scale);
-
-            //// 1. Рисуем связи (стрелки)
-            //foreach (var edge in _diagram.Edges)
-            //{
-            //    // Находим узлы по ID (предполагаем, что они есть в диаграмме)
-            //    var fromNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.From);
-            //    var toNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.To);
-            //    _renderer.DrawConnection(g, fromNode, toNode);
-            //}
-            //// Рисуем временную линию связи
-            //if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
-            //{
-            //    using (var pen = new Pen(Color.LightBlue, 2f) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash })
-            //    {
-            //        g.DrawLine(pen,
-            //            _interaction.StartNodeForConnection.X,
-            //            _interaction.StartNodeForConnection.Y,
-            //            _interaction.CurrentTempPoint.X,
-            //            _interaction.CurrentTempPoint.Y);
-            //    }
-            //}
-
-
-            //// 2. Рисуем узлы
-            //foreach (var node in _diagram.Nodes)
-            //{
-            //    // Проверяем, есть ли ID узла в списке выделенных
-            //    bool isSelected = _interaction.SelectedNodeIds.Contains(node.Id);
-            //    _renderer.DrawNode(g, node, isSelected);
-            //}
         }
 
         private void SaveProject()
         {
-            //using (var sfd = new SaveFileDialog { Filter = "Diagram Files|*.json" })
+            //using (var sfd = new SaveFileDialog())
             //{
+            //    sfd.Filter = "Causal Diagram Files (*.json)|*.json";
             //    if (sfd.ShowDialog() == DialogResult.OK)
             //    {
-            //        _projectService.Save(_diagram, sfd.FileName);
-            //        MessageBox.Show("Проект сохранен!");
+            //        try
+            //        {
+            //            DiagramSerializer.SaveToFile(sfd.FileName, _diagram);
+            //            MessageBox.Show("Диаграмма успешно сохранена!");
+            //        }
+            //        catch (Exception ex)
+            //        {
+            //            MessageBox.Show($"Ошибка при сохранении: {ex.Message}");
+            //        }
             //    }
             //}
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = "Causal Diagram Files (*.json)|*.json";
+                // 1. Добавляем выбор всех форматов в одно окно
+                sfd.Filter = "JSON Diagram (*.json)|*.json|XML Diagram (*.xml)|*.xml|PNG Image (*.png)|*.png|SVG Vector (*.svg)|*.svg";
+                sfd.Title = "Сохранить проект или экспортировать как изображение";
+
                 if (sfd.ShowDialog() == DialogResult.OK)
                 {
+                    string ext = Path.GetExtension(sfd.FileName).ToLower();
                     try
                     {
-                        DiagramSerializer.SaveToFile(sfd.FileName, _diagram);
-                        MessageBox.Show("Диаграмма успешно сохранена!");
+                        switch (ext)
+                        {
+                            case ".json":
+                                // Используем твой сериализатор или встроенный
+                                string json = JsonSerializer.Serialize(_diagram, new JsonSerializerOptions { WriteIndented = true });
+                                File.WriteAllText(sfd.FileName, json);
+                                _currentFilePath = sfd.FileName; // Запоминаем путь
+                                _commandManager.ResetModified(); // Сбрасываем "звездочку"
+                                break;
+
+                            case ".xml":
+                                string xml = SerializeToXml(_diagram); 
+                                File.WriteAllText(sfd.FileName, xml);
+                                _currentFilePath = sfd.FileName;
+                                _commandManager.ResetModified();
+                                break;
+
+                            case ".png":
+                                // Вызываем экспорт в картинку (логика из предыдущего сообщения)
+                                ExportToImageInternal(sfd.FileName);
+                                break;
+                            case ".svg":
+                                string svgData = ExportToSvg();
+                                File.WriteAllText(sfd.FileName, svgData);
+                                _commandManager.ResetModified();
+                                break;
+                        }
+
+                        UpdateTitle();
+                        MessageBox.Show($"Успешно сохранено в формате {ext.ToUpper()}");
                     }
                     catch (Exception ex)
                     {
@@ -602,37 +674,73 @@ namespace CausalDiagram.Core
 
         private void LoadProject()
         {
-            //using (var ofd = new OpenFileDialog { Filter = "Diagram Files|*.json" })
+            //using (var ofd = new OpenFileDialog())
             //{
+            //    ofd.Filter = "Causal Diagram Files (*.json)|*.json";
             //    if (ofd.ShowDialog() == DialogResult.OK)
             //    {
-            //        _diagram = _projectService.Load(ofd.FileName);
-            //        // Пересоздаем контроллер с новыми данными
-            //        _interaction = new InteractionController(_diagram, _renderer);
-            //        this.Invalidate(true); // Полная перерисовка
-            //        MessageBox.Show("Проект загружен!");
+            //        try
+            //        {
+            //            // Загружаем новую диаграмму
+            //            var loadedDiagram = DiagramSerializer.LoadFromFile(ofd.FileName);
+
+            //            // ВАЖНО: Обновляем ссылку в контроллере и форме
+            //            _diagram.Nodes.Clear();
+            //            _diagram.Edges.Clear();
+            //            _diagram.Nodes.AddRange(loadedDiagram.Nodes);
+            //            _diagram.Edges.AddRange(loadedDiagram.Edges);
+
+            //            _commandManager.Clear(); // Очищаем историю Undo/Redo при загрузке нового файла
+            //            canvas.Invalidate();
+            //            MessageBox.Show("Диаграмма загружена!");
+            //        }
+            //        catch (Exception ex)
+            //        {
+            //            MessageBox.Show($"Ошибка при загрузке: {ex.Message}");
+            //        }
             //    }
             //}
+
+            // 2. Сначала спрашиваем: "А вы сохранили текущую работу?"
+            if (!PromptToSave()) return; // Если нажата "Отмена" — выходим из метода
+
             using (var ofd = new OpenFileDialog())
             {
-                ofd.Filter = "Causal Diagram Files (*.json)|*.json";
+                ofd.Filter = "Диаграммы (*.json, *.xml)|*.json;*.xml|Все файлы (*.*)|*.*";
+
                 if (ofd.ShowDialog() == DialogResult.OK)
                 {
                     try
                     {
-                        // Загружаем новую диаграмму
-                        var loadedDiagram = DiagramSerializer.LoadFromFile(ofd.FileName);
+                        string content = File.ReadAllText(ofd.FileName);
+                        string ext = Path.GetExtension(ofd.FileName).ToLower();
+                        Diagram loadedDiagram = null;
 
-                        // ВАЖНО: Обновляем ссылку в контроллере и форме
-                        // (Предполагается, что у тебя есть метод ResetDiagram или аналогичный)
-                        _diagram.Nodes.Clear();
-                        _diagram.Edges.Clear();
-                        _diagram.Nodes.AddRange(loadedDiagram.Nodes);
-                        _diagram.Edges.AddRange(loadedDiagram.Edges);
+                        // 3. Логика чтения в зависимости от расширения
+                        if (ext == ".json")
+                        {
+                            loadedDiagram = JsonSerializer.Deserialize<Diagram>(content);
+                        }
+                        else if (ext == ".xml")
+                        {
+                            loadedDiagram = DeserializeFromXml(content);
+                        }
 
-                        _commandManager.Clear(); // Очищаем историю Undo/Redo при загрузке нового файла
-                        canvas.Invalidate();
-                        MessageBox.Show("Диаграмма загружена!");
+                        if (loadedDiagram != null)
+                        {
+                            // Обновляем текущую диаграмму
+                            _diagram.Nodes.Clear();
+                            _diagram.Edges.Clear();
+                            _diagram.Nodes.AddRange(loadedDiagram.Nodes);
+                            _diagram.Edges.AddRange(loadedDiagram.Edges);
+
+                            _currentFilePath = ofd.FileName;
+                            _commandManager.Clear(); // Очищаем историю правок
+
+                            UpdateTitle();
+                            canvas.Invalidate();
+                            MessageBox.Show("Диаграмма успешно загружена!");
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -644,54 +752,6 @@ namespace CausalDiagram.Core
 
         private void DeleteSelectedItems()
         {
-            //// 1. Получаем список ID выделенных узлов
-            //var nodesToDeleteIds = _interaction.SelectedNodeIds.ToList();
-
-            //if (nodesToDeleteIds.Count == 0) return;
-
-            //// 2. Спрашиваем пользователя
-            //var result = MessageBox.Show(
-            //    $"Удалить {nodesToDeleteIds.Count} узла(ов) и связанные с ними линии?",
-            //    "Подтверждение",
-            //    MessageBoxButtons.YesNo,
-            //    MessageBoxIcon.Question);
-
-            //if (result == DialogResult.Yes)
-            //{
-            //    // 3. Создаем команду, передавая ей текущую диаграмму и список ID
-            //    var command = new DeleteNodeCommand(_diagram, nodesToDeleteIds);
-
-            //    // 4. Отправляем команду в CommandManager. 
-            //    // Он сам вызовет метод Execute() и сохранит команду в стек Undo.
-            //    _commandManager.Execute(command);
-
-            //    // 5. Очищаем выделение и перерисовываем
-            //    _interaction.SelectedNodeIds.Clear();
-            //    canvas.Invalidate();
-            //}
-
-            //if (_selectedEdge != null)
-            //{
-            //    var command = new DeleteEdgeCommand(_diagram, _selectedEdge);
-            //    _commandManager.Execute(command);
-
-            //    _selectedEdge = null; // Сбрасываем выделение
-            //    canvas.Invalidate();
-            //}
-            //// 2. Если выделены узлы
-            //else if (_interaction.SelectedNodeIds.Count > 0)
-            //{
-            //    var nodesToDelete = _diagram.Nodes
-            //        .Where(n => _interaction.SelectedNodeIds.Contains(n.Id))
-            //        .ToList();
-
-            //    // Нам нужна комплексная команда, которая удалит и узлы, и связанные с ними стрелки
-            //    var command = new DeleteNodeCommand(_diagram, nodesToDelete);
-            //    _commandManager.Execute(command);
-
-            //    _interaction.SelectedNodeIds.Clear();
-            //    canvas.Invalidate();
-            //}
             // 1. Сначала проверяем, выделена ли отдельная связь
             if (_selectedEdge != null)
             {
@@ -706,7 +766,7 @@ namespace CausalDiagram.Core
             // 2. Если связи не выделены, удаляем выделенные узлы
             if (_interaction.SelectedNodeIds.Count > 0)
             {
-                // Передаем  список Guid, как просит твой конструктор
+                // Передаем  список Guid
                 var nodeIdsToDelete = _interaction.SelectedNodeIds.ToList();
 
                 var command = new DeleteNodeCommand(_diagram, nodeIdsToDelete);
@@ -719,10 +779,6 @@ namespace CausalDiagram.Core
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            //if (colorSelector.Control.Focused)
-            //{
-            //    return base.ProcessCmdKey(ref msg, keyData);
-            //}
             if ((colorSelector != null && colorSelector.Control.Focused) || this.ActiveControl is TextBox)
             {
                 return base.ProcessCmdKey(ref msg, keyData);
@@ -753,21 +809,6 @@ namespace CausalDiagram.Core
             // --- Копирование (Ctrl + C) ---
             if (keyData == (Keys.Control | Keys.C))
             {
-                //_clipboard.Clear();
-                //var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id)).ToList();
-
-                //foreach (var node in selectedNodes)
-                //{
-                //    // Создаем "клон" объекта, чтобы оригинал и копия не были связаны
-                //    _clipboard.Add(new Node
-                //    {
-                //        Title = node.Title,
-                //        Description = node.Description,
-                //        ColorName = node.ColorName,
-                //        X = node.X,
-                //        Y = node.Y
-                //    });
-                //}
                 CopySelected();
                 return true;
             }
@@ -775,41 +816,26 @@ namespace CausalDiagram.Core
             // --- Вставка (Ctrl + V) ---
             if (keyData == (Keys.Control | Keys.V))
             {
-                //if (_clipboard.Count > 0)
-                //{
-                //    var nodesToPaste = new List<Node>();
-                //    _interaction.SelectedNodeIds.Clear();
-
-                //    foreach (var item in _clipboard)
-                //    {
-                //        var newNode = new Node
-                //        {
-                //            Id = Guid.NewGuid(),
-                //            Title = item.Title + " (копия)",
-                //            Description = item.Description,
-                //            ColorName = item.ColorName,
-                //            X = item.X + 20,
-                //            Y = item.Y + 20
-                //        };
-                //        nodesToPaste.Add(newNode);
-                //        _interaction.SelectedNodeIds.Add(newNode.Id);
-                //    }
-
-                //    // Создаем и выполняем команду вставки
-                //    var command = new PasteCommand(_diagram, nodesToPaste);
-                //    _commandManager.Execute(command);
-
-                //    canvas.Invalidate();
-                //}
                 Paste();
                 return true;
             }
 
             return base.ProcessCmdKey(ref msg, keyData);
         }
+        private void SetMode(ToolStripButton activeMode, EditorMode mode)
+        {
+            _interaction.CurrentMode = mode;
+            // Список всех кнопок-режимов
+            var modeButtons = new[] {btnSelect, btnAdd, btnConnect};
+
+            foreach (var btn in modeButtons)
+            {
+                if (btn != null) btn.Checked = (btn == activeMode);
+            }
+        }
+
         private void RenderDiagram(Graphics g)
         {
-            //var e = g.Graphics;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             g.TranslateTransform(_panOffset.X, _panOffset.Y);
             g.ScaleTransform(_scale, _scale);
@@ -836,7 +862,6 @@ namespace CausalDiagram.Core
                 }
             }
 
-
             // 2. Рисуем узлы
             foreach (var node in _diagram.Nodes)
             {
@@ -856,9 +881,7 @@ namespace CausalDiagram.Core
             // --- НАСТРОЙКИ ВНЕШНЕГО ВИДА ---
             _propertyGrid.ToolbarVisible = false; // Убираем кнопки сверху
             _propertyGrid.HelpVisible = true;     // Оставляем нижнюю панель с подсказками (можно false, если не нужна)
-            _propertyGrid.PropertySort = PropertySort.Categorized; // Или Alphabetical
-                                                                   // -------------------------------
-
+            _propertyGrid.PropertySort = PropertySort.Categorized; 
             _propertyGrid.PropertyValueChanged += (s, e) => canvas.Invalidate();
             this.Controls.Add(_propertyGrid);
         }
@@ -888,19 +911,6 @@ namespace CausalDiagram.Core
                 .Where(e => selectedIds.Contains(e.From) && selectedIds.Contains(e.To))
                 .Select(e => new Edge { From = e.From, To = e.To }) // Копируем структуру
                 .ToList();
-            //_clipboard.Clear();
-            //var selectedNodes = _diagram.Nodes.Where(n => _interaction.SelectedNodeIds.Contains(n.Id));
-            //foreach (var node in selectedNodes)
-            //{
-            //    // Создаем глубокую копию, чтобы не менять оригиналы
-            //    _clipboard.Add(new Node
-            //    {
-            //        Title = node.Title + " (копия)",
-            //        X = node.X,
-            //        Y = node.Y,
-            //        ColorName = node.ColorName
-            //    });
-            //}
         }
 
         private void Paste()
@@ -950,23 +960,6 @@ namespace CausalDiagram.Core
             foreach (var n in newNodes) _interaction.SelectedNodeIds.Add(n.Id);
 
             canvas.Invalidate();
-            //if (_clipboard.Count == 0) return;
-
-            //_interaction.SelectedNodeIds.Clear();
-            //foreach (var clone in _clipboard)
-            //{
-            //    var newNode = new Node
-            //    {
-            //        Id = Guid.NewGuid(), // Новый ID обязателен!
-            //        Title = clone.Title,
-            //        X = clone.X + 20, // Сдвиг, чтобы не слиплись
-            //        Y = clone.Y + 20,
-            //        ColorName = clone.ColorName
-            //    };
-            //    _diagram.Nodes.Add(newNode);
-            //    _interaction.SelectedNodeIds.Add(newNode.Id);
-            //}
-            //canvas.Invalidate();
         }
 
         private void ShowEditBox(Node node)
@@ -1030,9 +1023,6 @@ namespace CausalDiagram.Core
 
         private PointF CanvasToScreen(PointF canvasPos)
         {
-            // Если у тебя нет Zoom/Pan, то это просто canvasPos.
-            // Если позже добавим Zoom, здесь нужно будет умножать на масштаб.
-            //return canvasPos;
             return new PointF(canvasPos.X * _zoom + _panOffset.X, canvasPos.Y * _zoom + _panOffset.Y);
         }
 
@@ -1074,59 +1064,439 @@ namespace CausalDiagram.Core
             }
             return null;
         }
-        //private void SaveDiagram()
-        //{
-        //    using (var sfd = new SaveFileDialog())
-        //    {
-        //        sfd.Filter = "Causal Diagram Files (*.json)|*.json";
-        //        if (sfd.ShowDialog() == DialogResult.OK)
-        //        {
-        //            try
-        //            {
-        //                DiagramSerializer.SaveToFile(sfd.FileName, _diagram);
-        //                MessageBox.Show("Диаграмма успешно сохранена!");
-        //            }
-        //            catch (Exception ex)
-        //            {
-        //                MessageBox.Show($"Ошибка при сохранении: {ex.Message}");
-        //            }
-        //        }
-        //    }
-        //}
 
-        //private void LoadDiagram()
-        //{
-        //    using (var ofd = new OpenFileDialog())
-        //    {
-        //        ofd.Filter = "Causal Diagram Files (*.json)|*.json";
-        //        if (ofd.ShowDialog() == DialogResult.OK)
-        //        {
-        //            try
-        //            {
-        //                // Загружаем новую диаграмму
-        //                var loadedDiagram = DiagramSerializer.LoadFromFile(ofd.FileName);
+        private void UpdateTitle()
+        {
+            string fileName = _currentFilePath == null ? "Новая диаграмма" : Path.GetFileName(_currentFilePath);
+            string modifiedMark = _commandManager.IsModified ? "*" : "";
+            this.Text = $"Causal Editor - {fileName}{modifiedMark}";
+        }
+        private bool PromptToSave()
+        {
+            if (!_commandManager.IsModified || (_diagram.Nodes.Count == 0 && _diagram.Edges.Count == 0)) return true; // Изменений нет, можно идти дальше
 
-        //                // ВАЖНО: Обновляем ссылку в контроллере и форме
-        //                // (Предполагается, что у тебя есть метод ResetDiagram или аналогичный)
-        //                _diagram.Nodes.Clear();
-        //                _diagram.Edges.Clear();
-        //                _diagram.Nodes.AddRange(loadedDiagram.Nodes);
-        //                _diagram.Edges.AddRange(loadedDiagram.Edges);
+            var result = MessageBox.Show(
+                "В текущую диаграмму внесены изменения. Сохранить их?",
+                "Сохранение",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
 
-        //                _commandManager.Clear(); // Очищаем историю Undo/Redo при загрузке нового файла
-        //                canvas.Invalidate();
-        //                MessageBox.Show("Диаграмма загружена!");
-        //            }
-        //            catch (Exception ex)
-        //            {
-        //                MessageBox.Show($"Ошибка при загрузке: {ex.Message}");
-        //            }
-        //        }
-        //    }
-        //}
+            if (result == DialogResult.Yes)
+            {
+                return Save(); // Пытаемся сохранить
+            }
+            else if (result == DialogResult.No)
+            {
+                _commandManager.ResetModified();
+                return true; // Пользователь не хочет сохранять, но мы можем продолжать
+            }
+            else
+            {
+                return false; // Нажата "Отмена", прерываем операцию
+            }
+        }
+
+        //новый файл
+        private void NewDiagram()
+        {
+            if (!PromptToSave()) return;
+
+            _diagram = new Diagram();
+            _currentFilePath = null;
+            _commandManager.Clear();
+            _interaction.SelectedNodeIds.Clear();
+
+            SetMode(btnSelect, EditorMode.Select);
+            UpdateStatusBar();
+            UpdateTitle();
+            canvas.Invalidate();
+        }
+
+        //открыть имеющуюся диаграмму
+        private void OpenDiagram()
+        {
+            if (!PromptToSave()) return;
+
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Filter = "JSON Files (*.json)|*.json|XML Files (*.xml)|*.xml|All files (*.*)|*.*";
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    try
+                    {
+                        string content = File.ReadAllText(openFileDialog.FileName);
+                        string extension = Path.GetExtension(openFileDialog.FileName).ToLower();
+
+                        if (extension == ".json")
+                        {
+                            _diagram = JsonSerializer.Deserialize<Diagram>(content);
+                        }
+                        else if (extension == ".xml")
+                        {
+                            var serializer = new XmlSerializer(typeof(Diagram));
+                            using (var reader = new StringReader(content))
+                            {
+                                _diagram = (Diagram)serializer.Deserialize(reader);
+                            }
+                        }
+
+                        _currentFilePath = openFileDialog.FileName;
+                        _commandManager.Clear(); // Очищаем историю после загрузки нового файла
+                        _interaction.SelectedNodeIds.Clear();
+
+                        UpdateTitle();
+                        canvas.Invalidate();
+                    }
+                    catch (JsonException)
+                    {
+                        MessageBox.Show("Файл поврежден или имеет неверный формат.", "Ошибка чтения", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Ошибка при открытии: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        private bool PerformSave(string path)
+        {
+            try
+            {
+                string extension = Path.GetExtension(path).ToLower();
+                string data = "";
+
+                if (extension == ".json")
+                {
+                    // Настройка, чтобы JSON был читаемым (в столбик), а не одной строкой
+                    var options = new JsonSerializerOptions { WriteIndented = true };
+                    data = JsonSerializer.Serialize(_diagram, options);
+                }
+                else if (extension == ".xml")
+                {
+                    data = SerializeToXml(_diagram);
+                }
+
+                File.WriteAllText(path, data);
+
+                _currentFilePath = path;
+                _commandManager.ResetModified(); // Сбрасываем "звездочку" в заголовке
+
+                // Удаляем файл автосохранения, так как данные теперь в безопасности
+                if (File.Exists(_autosavePath))
+                {
+                    try { File.Delete(_autosavePath); }
+                    catch { /* Игнорируем, если файл занят другим процессом */ }
+                }
+
+                UpdateStatusBar();
+                UpdateTitle();
+
+                if (lblStatusInfo != null) lblStatusInfo.Text = $"Файл сохранен: {DateTime.Now:HH:mm:ss}";
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка сохранения: {ex.Message}", "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+
+
+        }
+
+        private bool Save()
+        {
+            if (string.IsNullOrEmpty(_currentFilePath))
+            {
+                return SaveAs();
+            }
+            return PerformSave(_currentFilePath);
+        }
+
+        private bool SaveAs()
+        {
+            using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+            {
+                saveFileDialog.Filter = "JSON Files (*.json)|*.json|XML Files (*.xml)|*.xml";
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    return PerformSave(saveFileDialog.FileName);
+                }
+            }
+            return false;
+        }
+
+        private string SerializeToXml(Diagram diagram)
+        {
+            var serializer = new XmlSerializer(typeof(Diagram));
+            using (var writer = new StringWriter())
+            {
+                serializer.Serialize(writer, diagram);
+                return writer.ToString();
+            }
+        }
+        private Diagram DeserializeFromXml(string xmlText)
+        {
+            var serializer = new XmlSerializer(typeof(Diagram));
+            using (var reader = new StringReader(xmlText))
+            {
+                return (Diagram)serializer.Deserialize(reader);
+            }
+        }
+        private void ExportToImageInternal(string fileName)
+        {
+            if (_diagram.Nodes.Count == 0) return;
+
+            // 1. Считаем реальный размер схемы, чтобы на картинке не было пустоты
+            float minX = _diagram.Nodes.Min(n => n.X) - 40;
+            float minY = _diagram.Nodes.Min(n => n.Y) - 40;
+            float maxX = _diagram.Nodes.Max(n => n.X + 170); // 150 ширина + запас
+            float maxY = _diagram.Nodes.Max(n => n.Y + 100); // 80 высота + запас
+
+            int width = Math.Max(1, (int)(maxX - minX));
+            int height = Math.Max(1, (int)(maxY - minY));
+
+            // 2. Рисуем на виртуальном холсте (Bitmap)
+            using (Bitmap bmp = new Bitmap(width, height))
+            {
+                using (Graphics g = Graphics.FromImage(bmp))
+                {
+                    g.Clear(Color.White); // Фон
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                    // Смещаем камеру так, чтобы самый левый верхний узел был в углу картинки
+                    g.TranslateTransform(-minX, -minY);
+
+                    // Используем твой стандартный рендерер (без выделения узлов)
+                    _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, _panOffset, _showGrid, GridStep);
+                }
+
+                // 3. Сохраняем файл
+                bmp.Save(fileName, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+        private string ExportToSvg()
+        {
+            // Используем StringBuilder для быстрой сборки текста
+            var svg = new System.Text.StringBuilder();
+
+            // Вычисляем границы
+            float minX = _diagram.Nodes.Count > 0 ? _diagram.Nodes.Min(n => n.X) - 20 : 0;
+            float minY = _diagram.Nodes.Count > 0 ? _diagram.Nodes.Min(n => n.Y) - 20 : 0;
+            float width = _diagram.Nodes.Count > 0 ? _diagram.Nodes.Max(n => n.X + 170) - minX : 800;
+            float height = _diagram.Nodes.Count > 0 ? _diagram.Nodes.Max(n => n.Y + 100) - minY : 600;
+
+            // Заголовок SVG
+            svg.AppendLine($"<svg width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\" xmlns=\"http://www.w3.org/2000/svg\">");
+            svg.AppendLine($"<rect width=\"100%\" height=\"100%\" fill=\"white\" />"); // Фон
+            svg.AppendLine($"<g transform=\"translate({-minX}, {-minY})\">"); // Сдвиг координат
+
+            // 1. Рисуем связи (Edges)
+            foreach (var edge in _diagram.Edges)
+            {
+                var from = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.From);
+                var to = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.To);
+                if (from != null && to != null)
+                {
+                    // Упрощенная линия (можно добавить стрелочки через marker-end)
+                    svg.AppendLine($"  <line x1=\"{from.X + 75}\" y1=\"{from.Y + 40}\" x2=\"{to.X + 75}\" y2=\"{to.Y + 40}\" stroke=\"black\" stroke-width=\"2\" />");
+                }
+            }
+
+            // 2. Рисуем узлы (Nodes)
+            foreach (var node in _diagram.Nodes)
+            {
+                string color = node.ColorName.ToString() ?? "LightBlue";
+                svg.AppendLine($"  <rect x=\"{node.X}\" y=\"{node.Y}\" width=\"150\" height=\"80\" rx=\"10\" fill=\"{color}\" stroke=\"black\" stroke-width=\"1\" />");
+                svg.AppendLine($"  <text x=\"{node.X + 75}\" y=\"{node.Y + 45}\" font-family=\"Arial\" font-size=\"12\" text-anchor=\"middle\" fill=\"black\">{node.Title}</text>");
+            }
+
+            svg.AppendLine("</g>");
+            svg.AppendLine("</svg>");
+
+            return svg.ToString();
+        }
+
+        private bool ValidateDiagram()
+        {
+            // Ищем связи, у которых удалили один из узлов
+            var brokenEdges = _diagram.Edges.Where(e =>
+                !_diagram.Nodes.Any(n => n.Id == e.From) ||
+                !_diagram.Nodes.Any(n => n.Id == e.To)).ToList();
+
+            if (brokenEdges.Any())
+            {
+                var result = MessageBox.Show(
+                    $"Найдено {brokenEdges.Count} битых связей. Удалить их перед сохранением?",
+                    "Валидация", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (result == DialogResult.Yes)
+                {
+                    foreach (var edge in brokenEdges) _diagram.Edges.Remove(edge);
+                    return true;
+                }
+                return false; // Пользователь не хочет сохранять "битый" файл
+            }
+            return true;
+        }
+
+        private void InitAutosave()
+        {
+            var timer = new System.Windows.Forms.Timer();
+            timer.Interval = 120000; // 2 минуты (в миллисекундах)
+            timer.Tick += (s, e) =>
+            {
+                // Сохраняем, только если схема не пуста и есть изменения
+                if (_commandManager.IsModified && _diagram.Nodes.Count > 0)
+                {
+                    try
+                    {
+                        string json = JsonSerializer.Serialize(_diagram);
+                        File.WriteAllText(_autosavePath, json);
+
+                        // Делаем файл скрытым (опционально, для чистоты)
+                        File.SetAttributes(_autosavePath, FileAttributes.Hidden);
+
+                        // Можно тихонько обновить статус-бар, чтобы ты видела, что это работает
+                        lblStatusInfo.Text = $"Автосохранение: {DateTime.Now:HH:mm}";
+                    }
+                    catch { /* Если не удалось сохранить в темп, просто игнорируем */ }
+                }
+            };
+            timer.Start();
+        }
+
+        private void CheckForAutosaveRecovery()
+        {
+            if (File.Exists(_autosavePath))
+            {
+                var result = MessageBox.Show(
+                    "Программа была закрыта некорректно. Восстановить последнюю автосохраненную диаграмму?",
+                    "Восстановление",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Information);
+
+                if (result == DialogResult.Yes)
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(_autosavePath);
+                        _diagram = JsonSerializer.Deserialize<Diagram>(json);
+                        _commandManager.Clear(); // Сбрасываем историю, чтобы начать с чистого листа
+                        canvas.Invalidate();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"Не удалось восстановить файл: {ex.Message}");
+                    }
+                }
+
+                // В любом случае удаляем файл автосохранения после предложения, 
+                // чтобы не спрашивать при каждом запуске
+                File.Delete(_autosavePath);
+            }
+        }
+
+        private void UpdateStatusBar()
+        {
+            if (lblStatusInfo == null) return;
+
+            // Обновляем текст счетчиков
+            lblCount.Text = $"Узлов: {_diagram.Nodes.Count} | Связей: {_diagram.Edges.Count}";
+
+            // Обновляем текст зума
+            lblZoom.Text = $"Зум: {Math.Round(_zoom * 100)}%";
+        }
+        private void DrawMinimap(Graphics g)
+        {
+            // 1. Показываем только при отдалении
+            if (_zoom >= 0.99f) return;
+            if (_diagram.Nodes.Count == 0) return; // Если узлов нет, рисовать нечего
+
+            int miniW = 200;
+            int miniH = 150;
+            int margin = 10;
+            Rectangle miniRect = new Rectangle(margin, canvas.Height - miniH - margin - 30, miniW, miniH);
+
+            // 2. ВЫЧИСЛЯЕМ ГРАНИЦЫ ВСЕЙ СХЕМЫ (Bounding Box)
+            float minX = _diagram.Nodes.Min(n => n.X);
+            float minY = _diagram.Nodes.Min(n => n.Y);
+            float maxX = _diagram.Nodes.Max(n => n.X + 150); // + ширина узла
+            float maxY = _diagram.Nodes.Max(n => n.Y + 80);  // + высота узла
+
+            float diagramW = maxX - minX;
+            float diagramH = maxY - minY;
+
+            // 3. ВЫЧИСЛЯЕМ МАСШТАБ, чтобы вписать схему в мини-карту
+            // Берем минимальный коэффициент, чтобы влезло и по ширине, и по высоте
+            float scaleX = (miniW - 10) / diagramW;
+            float scaleY = (miniH - 10) / diagramH;
+            float fitScale = Math.Min(scaleX, scaleY);
+
+            // Ограничиваем сверху, чтобы на одном узле карта не растягивалась на весь экран
+            if (fitScale > 0.15f) fitScale = 0.15f;
+
+            // 4. РИСУЕМ ПОДЛОЖКУ
+            g.FillRectangle(new SolidBrush(Color.FromArgb(200, Color.White)), miniRect);
+            g.DrawRectangle(Pens.LightGray, miniRect);
+
+            var state = g.Save();
+            g.SetClip(miniRect);
+
+            // 5. ТРАНСФОРМАЦИЯ
+            // Сначала двигаем начало координат мини-карты
+            g.TranslateTransform(miniRect.X + 5, miniRect.Y + 5);
+            // Масштабируем
+            g.ScaleTransform(fitScale, fitScale);
+            // Сдвигаем всё рисование так, чтобы самый левый верхний узел был в (0,0) мини-карты
+            g.TranslateTransform(-minX, -minY);
+
+            // 6. РЕНДЕР (без выделения и сетки)
+            _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, new PointF(0, 0), false, 20);
+
+            using (Pen viewPen = new Pen(Color.FromArgb(180, Color.DodgerBlue), 1f))
+            using (SolidBrush viewBrush = new SolidBrush(Color.FromArgb(20, Color.DodgerBlue)))
+            {
+                // 1. Вычисляем, что видит пользователь на основном экране
+                // Мы инвертируем трансформацию основной камеры:
+                // Ширина видимой области = ширина канваса / зум
+                float viewWidth = canvas.Width / _zoom;
+                float viewHeight = canvas.Height / _zoom;
+                // Начало видимой области (с учетом панорамирования)
+                float viewX = -_panOffset.X / _zoom;
+                float viewY = -_panOffset.Y / _zoom;
+
+                float paddingX = viewWidth * 0.05f;
+                float paddingY = viewHeight * 0.05f;
+
+                float slimX = viewX + paddingX;
+                float slimY = viewY + paddingY;
+                float slimW = viewWidth - (paddingX * 2);
+                float slimH = viewHeight - (paddingY * 2);
+
+                // 2. Рисуем эту рамку. 
+                // Поскольку мы уже внутри ScaleTransform и TranslateTransform мини-карты,
+                // нам просто нужно передать координаты основного "окна"
+                g.FillRectangle(viewBrush, slimX, slimY, slimW, slimH);
+
+                // Рисуем контур, используя именно уменьшенные (slim) координаты
+                g.DrawRectangle(viewPen, slimX, slimY, slimW, slimH);
+            }
+            g.Restore(state);
+        }
+
+        private void UpdateStatusIndicators()
+        {
+            // Безопасная проверка: если лейблы еще не созданы, ничего не делаем
+            if (lblCount == null || lblZoom == null) return;
+
+            // Обновляем текст
+            lblCount.Text = $"Узлов: {_diagram.Nodes.Count} | Связей: {_diagram.Edges.Count}";
+            lblZoom.Text = $"Зум: {Math.Round(_zoom * 100)}%";
+        }
     }
-
-
 }
 
 

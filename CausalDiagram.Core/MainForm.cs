@@ -81,6 +81,12 @@ namespace CausalDiagram.Core
         private ToolStripStatusLabel lblCount;
         private ToolStripStatusLabel lblZoom;
 
+        //для превью стрелок
+        private PointF _currentMouseWorldPos;
+
+        // Поле для хранения ссылки на активный редактор при двойной клик
+        private TextBox _currentEditBox = null; 
+
         public MainForm()
         {
             InitializeComponent();
@@ -175,12 +181,12 @@ namespace CausalDiagram.Core
 
             this.Controls.Add(toolStrip);
 
-            var btnGrid = new ToolStripButton("Сетка") { CheckOnClick = true, Checked = _showGrid };
-            btnGrid.Click += (s, e) => {
-                _showGrid = btnGrid.Checked;
-                canvas.Invalidate(); // Перерисовать, чтобы сетка исчезла или появилась
-            };
-            toolStrip.Items.Add(btnGrid);
+            //var btnGrid = new ToolStripButton("Сетка") { CheckOnClick = true, Checked = _showGrid };
+            //btnGrid.Click += (s, e) => {
+            //    _showGrid = btnGrid.Checked;
+            //    canvas.Invalidate(); // Перерисовать, чтобы сетка исчезла или появилась
+            //};
+            //toolStrip.Items.Add(btnGrid);
 
             // 1. Создаем сам выпадающий список
             colorSelector = new ToolStripComboBox();
@@ -279,6 +285,15 @@ namespace CausalDiagram.Core
 
             // Подписываемся на мышь
             canvas.MouseDown += (s, e) => {
+                // Если текстовое поле существует и оно активно (видимо)
+                if (_currentEditBox != null)
+                {
+                    // При клике мимо оно само закроется через LostFocus (CommitChange),
+                    // но нам нужно остановить дальнейшую обработку клика:
+                    canvas.Focus(); // Забираем фокус у TextBox, провоцируя LostFocus
+                    return; // ВЫХОДИМ, чтобы не создать новый узел
+                }
+
                 var p = ScreenToCanvas(e.Location);
 
                 _selectedEdge = FindEdgeAt(p); // Вызываем метод поиска
@@ -363,6 +378,7 @@ namespace CausalDiagram.Core
             };
             canvas.MouseMove += (s, e) => {
                 var p = ScreenToCanvas(e.Location);
+                _currentMouseWorldPos = ScreenToCanvas(e.Location); // Запоминаем позицию мыши в координатах холста
 
                 if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
                 {
@@ -498,6 +514,21 @@ namespace CausalDiagram.Core
                 // Теперь Renderer просто рисует в своих обычных координатах, 
                 // а GDI+ сама их масштабирует и двигает
                 _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep);
+
+                //превью стрелок
+                if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
+                {
+                    // Берем узел напрямую из контроллера
+                    var startNode = _interaction.StartNodeForConnection;
+
+                    using (Pen tempPen = new Pen(Color.Gray, 2f) { DashStyle = DashStyle.Dash })
+                    {
+                        // Смещаем начальную точку в центр узла. 
+                        // 75 и 40 — это примерные значения (половина ширины и высоты узла). 
+                        // Если твои узлы другого размера, подставь сюда нужные цифры.
+                        e.Graphics.DrawLine(tempPen, startNode.X + 15, startNode.Y + 10, _currentMouseWorldPos.X, _currentMouseWorldPos.Y);
+                    }
+                }
 
                 e.Graphics.ResetTransform(); // Сбрасываем, чтобы UI (если есть) не уплыл
                 
@@ -964,8 +995,11 @@ namespace CausalDiagram.Core
 
         private void ShowEditBox(Node node)
         {
+            // Если вдруг уже что-то редактируется, закрываем старое (на всякий случай)
+            if (_currentEditBox != null) Cleanup();
+
             // 1. Создаем TextBox
-            var editBox = new TextBox
+            _currentEditBox = new TextBox
             {
                 Text = node.Title,
                 Font = new Font("Segoe UI", 10),
@@ -979,24 +1013,26 @@ namespace CausalDiagram.Core
             using (var g = canvas.CreateGraphics())
             {
                 var size = _renderer.CalculateNodeSize(g, node);
-                editBox.Size = new Size((int)size.Width, (int)size.Height);
+                _currentEditBox.Size = new Size((int)size.Width, (int)size.Height);
 
                 // Пересчитываем координаты центра в верхний левый угол для TextBox
                 var screenPos = CanvasToScreen(new PointF(node.X - size.Width / 2, node.Y - size.Height / 2));
-                editBox.Location = new Point((int)screenPos.X, (int)screenPos.Y);
+                _currentEditBox.Location = new Point((int)screenPos.X, (int)screenPos.Y);
             }
 
             // 3. Добавляем его на холст
-            canvas.Controls.Add(editBox);
-            editBox.Focus();
-            editBox.SelectAll();
+            canvas.Controls.Add(_currentEditBox);
+            _currentEditBox.Focus();
+            _currentEditBox.SelectAll();
 
             // 4. Логика завершения редактирования
             void CommitChange()
             {
-                if (editBox.Text != node.Title)
+                if (_currentEditBox == null) return;
+
+                if (_currentEditBox.Text != node.Title)
                 {
-                    var command = new RenameNodeCommand(node, editBox.Text);
+                    var command = new RenameNodeCommand(node, _currentEditBox.Text);
                     _commandManager.Execute(command);
                     _propertyGrid.Refresh(); // Обновляем таблицу свойств, если она открыта
                 }
@@ -1005,20 +1041,40 @@ namespace CausalDiagram.Core
 
             void Cleanup()
             {
-                canvas.Controls.Remove(editBox);
-                editBox.Dispose();
-                canvas.Focus(); // Возвращаем фокус холсту для работы горячих клавиш
+                //canvas.Controls.Remove(_currentEditBox);
+                //_currentEditBox.Dispose();
+                //canvas.Focus(); // Возвращаем фокус холсту для работы горячих клавиш
+                //canvas.Invalidate();
+
+                if (_currentEditBox == null) return;
+
+                var boxToDispose = _currentEditBox;
+                _currentEditBox = null; // Сначала зануляем ссылку!
+
+
+                //canvas.Controls.Remove(_currentEditBox);
+                //_currentEditBox.Dispose();
+                //_currentEditBox = null; // ОСВОБОЖДАЕМ ПОЛЕ
+                //canvas.Focus();
+                //canvas.Invalidate();
+
+
+
+                canvas.Controls.Remove(boxToDispose);
+                boxToDispose.Dispose();
+
+                canvas.Focus();
                 canvas.Invalidate();
             }
 
             // 5. Обработка клавиш
-            editBox.KeyDown += (s, e) => {
+            _currentEditBox.KeyDown += (s, e) => {
                 if (e.KeyCode == Keys.Enter && !e.Shift) { e.SuppressKeyPress = true; CommitChange(); }
                 if (e.KeyCode == Keys.Escape) { Cleanup(); }
             };
 
             // Если пользователь кликнул мимо — сохраняем изменения
-            editBox.LostFocus += (s, e) => CommitChange();
+            _currentEditBox.LostFocus += (s, e) => CommitChange();
         }
 
         private PointF CanvasToScreen(PointF canvasPos)
@@ -1412,7 +1468,7 @@ namespace CausalDiagram.Core
         private void DrawMinimap(Graphics g)
         {
             // 1. Показываем только при отдалении
-            if (_zoom >= 0.99f) return;
+            //if (_zoom >= 0.99f) return;
             if (_diagram.Nodes.Count == 0) return; // Если узлов нет, рисовать нечего
 
             int miniW = 200;

@@ -202,6 +202,12 @@ namespace CausalDiagram.Rendering
             // 2. Находим точки на границах, смотрящие друг на друга
             var startPoint = GetRectBoundaryPointTowards(fromRect, new PointF(to.X, to.Y));
             var endPoint = GetRectBoundaryPointTowards(toRect, new PointF(from.X, from.Y));
+            
+            //для мини-карты
+            bool isMinimap = g.Transform.Elements[0] < 0.2f;
+
+            Color edgeColor = isSelected ? Color.DodgerBlue : Color.Black; // Красный как у узлов
+            float edgeThickness = isSelected ? 3f : 2f; // Чуть толще при выделении
 
             //float baseWidth = isSelected ? 4f : 2f;
             //float adjustedWidth = baseWidth / zoom;
@@ -216,19 +222,50 @@ namespace CausalDiagram.Rendering
             float finalCapW = worldArrowW / currentPenWidth;
             float finalCapH = worldArrowH / currentPenWidth;
 
-            // ВЫБОР ЦВЕТА: если выделено — рисуем синим и толстым, если нет — серым
-            Color penColor = isSelected ? Color.DodgerBlue : Color.Gray;
+            //// ВЫБОР ЦВЕТА: если выделено — рисуем синим и толстым, если нет — серым
+            //Color penColor = isSelected ? Color.DodgerBlue : Color.Gray;
 
 
             // 3. Рисуем стрелку между этими точками
-            using (var pen = new Pen(Color.Gray, 2f))
+            using (var pen = new Pen(edgeColor, edgeThickness/*Color.Gray, 2f*/))
             {
-                if (finalCapW > 0.01f && finalCapH > 0.01f)
+                if (!isMinimap)
                 {
-                    pen.CustomEndCap = new AdjustableArrowCap(finalCapW, finalCapH, true);
+                    float capW = finalCapW;
+                    float capH = finalCapH;
+
+                    // Если хочешь, чтобы стрелка НЕ росла вместе с толщиной линии:
+                    // float capW = 8f / edgeThickness; 
+                    // float capH = 12f / edgeThickness;
+
+                    pen.CustomEndCap = new AdjustableArrowCap(capW, capH, true);
+
+                    
                 }
+                else 
+                {
+                    pen.Width = 1f;
+                }
+
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.DrawLine(pen, startPoint, endPoint);
+                //if (finalCapW > 0.01f && finalCapH > 0.01f)
+                //{
+                //    pen.CustomEndCap = new AdjustableArrowCap(finalCapW, finalCapH, true);
+                //}
+                //g.SmoothingMode = SmoothingMode.AntiAlias;
+                //g.DrawLine(pen, startPoint, endPoint);
+                //float capW = finalCapW;
+                //float capH = finalCapH;
+
+                //// Если хочешь, чтобы стрелка НЕ росла вместе с толщиной линии:
+                //// float capW = 8f / edgeThickness; 
+                //// float capH = 12f / edgeThickness;
+
+                //pen.CustomEndCap = new AdjustableArrowCap(capW, capH, true);
+
+                //g.SmoothingMode = SmoothingMode.AntiAlias;
+                //g.DrawLine(pen, startPoint, endPoint);
             }
 
             

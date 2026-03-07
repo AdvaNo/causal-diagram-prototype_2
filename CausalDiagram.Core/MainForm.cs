@@ -116,14 +116,12 @@ namespace CausalDiagram.Core
 
             InitPropertyGrid();
 
-            // 1. Создаем панель для кнопок
+            //Создаем панель для кнопок
             ToolStrip toolStrip = new ToolStrip();
 
-            // 2. Кнопка "Выбрать" (курсор)
             btnSelect = new ToolStripButton("Выбрать") { CheckOnClick = true, Checked = true };
             btnSelect.Click += (s, e) => SetMode(btnSelect, EditorMode.Select);
 
-            // 3. Кнопка "Добавить узел"
             btnAdd = new ToolStripButton("Новый узел") { CheckOnClick = true };
             btnAdd.Click += (s, e) => SetMode(btnAdd, EditorMode.AddNode);
 
@@ -141,7 +139,6 @@ namespace CausalDiagram.Core
             btnUndo = new ToolStripButton("Отменить");
             btnUndo.Click += (s, e) => { _commandManager.Undo(); canvas.Invalidate(); };
 
-            // 5. Кнопки Сохранить/Загрузить
             btnSave = new ToolStripButton("Сохранить");
             btnSave.Click += (s, e) => SaveProject();
 
@@ -226,14 +223,13 @@ namespace CausalDiagram.Core
 
             statusStrip = new StatusStrip();
             lblCount = new ToolStripStatusLabel { Text = "Узлов: 0, Связей: 0" };
-            lblZoom = new ToolStripStatusLabel { Text = "Зум: 100%"/*, Alignment = ToolStripItemAlignment.Right */};
+            lblZoom = new ToolStripStatusLabel { Text = "Зум: 100%"};
             //зум справа => добавим "пружину" (пустой лейбл, который съедает место)
             var spring = new ToolStripStatusLabel { Spring = true };
 
             statusStrip.Items.AddRange(new ToolStripItem[] { lblCount, spring, lblZoom });
             this.Controls.Add(statusStrip);
 
-            //canvas.Paint += Canvas_Paint;
             this.Controls.Add(canvas);
 
             canvas.Paint += (s, e) => {
@@ -332,9 +328,8 @@ namespace CausalDiagram.Core
                             Title = "Новый фактор",
                             X = p.X,
                             Y = p.Y,
-                            ColorName = _currentSelectedColor /*NodeColor.Yellow*/
+                            ColorName = _currentSelectedColor 
                         };
-                        //_diagram.Nodes.Add(newNode);
                         var command = new CausalDiagram.Commands.AddNodeCommand(_diagram, newNode);
                         _commandManager.Execute(command);
                     }
@@ -511,8 +506,6 @@ namespace CausalDiagram.Core
                     using (Pen tempPen = new Pen(Color.Gray, 2f) { DashStyle = DashStyle.Dash })
                     {
                         // Смещаем начальную точку в центр узла. 
-                        // 75 и 40 — это примерные значения (половина ширины и высоты узла). 
-                        // Если твои узлы другого размера, подставь сюда нужные цифры.
                         e.Graphics.DrawLine(tempPen, startNode.X + 15, startNode.Y + 10, _currentMouseWorldPos.X, _currentMouseWorldPos.Y);
                     }
                 }
@@ -552,7 +545,6 @@ namespace CausalDiagram.Core
             {
                 NodeColor newColor = NodeColor.Yellow; // значение по умолчанию
 
-                // 1. Твоя существующая логика определения цвета
                 switch (colorSelector.SelectedItem.ToString())
                 {
                     case "Желтый":
@@ -572,7 +564,7 @@ namespace CausalDiagram.Core
                 // Обновляем глобальную переменную для будущих узлов
                 _currentSelectedColor = newColor;
 
-                // 2. НОВАЯ ЛОГИКА: Меняем цвет уже выделенным узлам
+                //  Меняем цвет уже выделенным узлам
                 if (_interaction.SelectedNodeIds.Any())
                 {
                     var selectedNodes = _diagram.Nodes
@@ -624,22 +616,6 @@ namespace CausalDiagram.Core
 
         private void SaveProject()
         {
-            //using (var sfd = new SaveFileDialog())
-            //{
-            //    sfd.Filter = "Causal Diagram Files (*.json)|*.json";
-            //    if (sfd.ShowDialog() == DialogResult.OK)
-            //    {
-            //        try
-            //        {
-            //            DiagramSerializer.SaveToFile(sfd.FileName, _diagram);
-            //            MessageBox.Show("Диаграмма успешно сохранена!");
-            //        }
-            //        catch (Exception ex)
-            //        {
-            //            MessageBox.Show($"Ошибка при сохранении: {ex.Message}");
-            //        }
-            //    }
-            //}
             using (var sfd = new SaveFileDialog())
             {
                 // 1. Добавляем выбор всех форматов в одно окно
@@ -654,7 +630,6 @@ namespace CausalDiagram.Core
                         switch (ext)
                         {
                             case ".json":
-                                // Используем твой сериализатор или встроенный
                                 string json = JsonSerializer.Serialize(_diagram, new JsonSerializerOptions { WriteIndented = true });
                                 File.WriteAllText(sfd.FileName, json);
                                 _currentFilePath = sfd.FileName; // Запоминаем путь
@@ -669,7 +644,6 @@ namespace CausalDiagram.Core
                                 break;
 
                             case ".png":
-                                // Вызываем экспорт в картинку (логика из предыдущего сообщения)
                                 ExportToImageInternal(sfd.FileName);
                                 break;
                             case ".svg":
@@ -692,33 +666,6 @@ namespace CausalDiagram.Core
 
         private void LoadProject()
         {
-            //using (var ofd = new OpenFileDialog())
-            //{
-            //    ofd.Filter = "Causal Diagram Files (*.json)|*.json";
-            //    if (ofd.ShowDialog() == DialogResult.OK)
-            //    {
-            //        try
-            //        {
-            //            // Загружаем новую диаграмму
-            //            var loadedDiagram = DiagramSerializer.LoadFromFile(ofd.FileName);
-
-            //            // ВАЖНО: Обновляем ссылку в контроллере и форме
-            //            _diagram.Nodes.Clear();
-            //            _diagram.Edges.Clear();
-            //            _diagram.Nodes.AddRange(loadedDiagram.Nodes);
-            //            _diagram.Edges.AddRange(loadedDiagram.Edges);
-
-            //            _commandManager.Clear(); // Очищаем историю Undo/Redo при загрузке нового файла
-            //            canvas.Invalidate();
-            //            MessageBox.Show("Диаграмма загружена!");
-            //        }
-            //        catch (Exception ex)
-            //        {
-            //            MessageBox.Show($"Ошибка при загрузке: {ex.Message}");
-            //        }
-            //    }
-            //}
-
             // 2. Сначала спрашиваем: "А вы сохранили текущую работу?"
             if (!PromptToSave()) return; // Если нажата "Отмена" — выходим из метода
 
@@ -946,7 +893,7 @@ namespace CausalDiagram.Core
                 var newNode = oldNode.Clone();
                 var oldId = newNode.Id;
                 newNode.Id = Guid.NewGuid(); // Генерируем новый ID
-                newNode.Title += " (копия)"; // Твое пожелание из списка придирок
+                newNode.Title += " (копия)"; 
 
                 // Смещаем копию чуть в сторону, чтобы она не перекрыла оригинал
                 newNode.X += 20;
@@ -1028,24 +975,10 @@ namespace CausalDiagram.Core
 
             void Cleanup()
             {
-                //canvas.Controls.Remove(_currentEditBox);
-                //_currentEditBox.Dispose();
-                //canvas.Focus(); // Возвращаем фокус холсту для работы горячих клавиш
-                //canvas.Invalidate();
-
                 if (_currentEditBox == null) return;
 
                 var boxToDispose = _currentEditBox;
                 _currentEditBox = null; // Сначала зануляем ссылку!
-
-
-                //canvas.Controls.Remove(_currentEditBox);
-                //_currentEditBox.Dispose();
-                //_currentEditBox = null; // ОСВОБОЖДАЕМ ПОЛЕ
-                //canvas.Focus();
-                //canvas.Invalidate();
-
-
 
                 canvas.Controls.Remove(boxToDispose);
                 boxToDispose.Dispose();
@@ -1436,8 +1369,6 @@ namespace CausalDiagram.Core
                     }
                 }
 
-                // В любом случае удаляем файл автосохранения после предложения, 
-                // чтобы не спрашивать при каждом запуске
                 File.Delete(_autosavePath);
             }
         }
@@ -1454,8 +1385,6 @@ namespace CausalDiagram.Core
         }
         private void DrawMinimap(Graphics g)
         {
-            // 1. Показываем только при отдалении
-            //if (_zoom >= 0.99f) return;
             if (_diagram.Nodes.Count == 0) return; // Если узлов нет, рисовать нечего
 
             int miniW = 200;
@@ -1549,7 +1478,7 @@ namespace CausalDiagram.Core
                 return;
             }
 
-            // 1. Запускаем наш сервис поиска
+            // 1. Запускаем сервис поиска
             _activeTrace = TraceAnalyzer.Analyze(_diagram, node);
 
             // 2. Перерисовываем холст, чтобы увидеть подсвеченные стрелки

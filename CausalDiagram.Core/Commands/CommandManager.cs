@@ -30,10 +30,6 @@ namespace CausalDiagram.Core.Commands
 
         public void Undo()
         {
-        //    if (!CanUndo) return;
-        //    var c = _undo.Pop();
-        //    c.Undo();
-        //    _redo.Push(c);
             if (_undo.Count > 0)
             {
                 var command = _undo.Pop();
@@ -45,10 +41,6 @@ namespace CausalDiagram.Core.Commands
 
         public void Redo()
         {
-            //if (!CanRedo) return;
-            //var c = _redo.Pop();
-            //c.Execute();
-            //_undo.Push(c);
             if (_redo.Count > 0)
             {
                 var command = _redo.Pop();

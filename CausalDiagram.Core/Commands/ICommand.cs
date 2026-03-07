@@ -10,8 +10,8 @@ using System.Threading.Tasks;
         // Простой интерфейс без лишних аргументов
         public interface ICommand
         {
-            void Execute(); // Скобки пустые!
-            void Undo();    // Скобки пустые!
+            void Execute(); 
+            void Undo();   
         }
     }
 

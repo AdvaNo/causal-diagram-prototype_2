@@ -37,17 +37,11 @@ namespace CausalDiagram.Core.Models
         [Description("Цвет заливки узла")]
         public NodeColor ColorName { get; set; } = NodeColor.Green;
 
-        //[JsonIgnore]
-        //public int Rpn => Severity * Occurrence * Detectability;
 
         [Browsable(false)]
         [JsonIgnore] // чтобы не сериализовать визуальные состояния
         public bool IsHighlighted { get; set; } = false;
 
-
-
-        // [DisplayName("...")] меняет название в таблице
-        // [Description("...")] добавляет описание внизу 
         public Node Clone()
         {
             return new Node

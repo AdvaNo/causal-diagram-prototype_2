@@ -12,7 +12,7 @@ namespace CausalDiagram.Rendering
         // Настройки шрифтов
         private readonly Font _mainFont = new Font("Segoe UI", 10f);
 
-        // Исправление бага: Динамический расчет размера узла
+        //Динамический расчет размера узла
         public SizeF CalculateNodeSize(Graphics g, Node node)
         {
             var minSize = new SizeF(120, 60); // Минимальный размер, как раньше
@@ -67,10 +67,6 @@ namespace CausalDiagram.Rendering
 
         public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom, PointF panOffset, bool showGrid, int gridStep, TraceResult activeTrace)
         {
-            //if (showGrid)
-            //{
-            //    DrawGrid(g, zoom, panOffset, gridStep);
-            //}
             // 1. Сначала рисуем все связи (чтобы они были под узлами)
             foreach (var edge in diagram.Edges)
             {
@@ -119,16 +115,7 @@ namespace CausalDiagram.Rendering
         public void DrawNode(Graphics g, Node node, bool isSelected)
         {
             // 1. Считаем реальный размер под текст
-            //var size = CalculateNodeSize(g, node);
-
             var rect = GetNodeBounds(g, node);
-
-            // Центрируем прямоугольник относительно координат узла
-            //var rect = new RectangleF(
-            //    node.X - size.Width / 2f,
-            //    node.Y - size.Height / 2f,
-            //    size.Width,
-            //    size.Height);
 
             // 2. Выбираем цвет (используем твой Enum)
             Brush bgBrush = Brushes.LightGray;
@@ -140,7 +127,7 @@ namespace CausalDiagram.Rendering
                 case NodeColor.Yellow: bgBrush = Brushes.LightYellow; break;
                 case NodeColor.Red:
                     bgBrush = Brushes.LightCoral;
-                    rounded = true; // Красные - круглые (по логике прототипа)
+                    rounded = true; // Красные - круглые 
                     break;
             }
 
@@ -168,13 +155,6 @@ namespace CausalDiagram.Rendering
                 g.DrawString(node.Title, _mainFont, Brushes.Black, rect, stringFormat);
             }
 
-        //    // 4. Рисуем текст (уже гарантированно влезает)
-        //    var stringFormat = new StringFormat
-        //    {
-        //        Alignment = StringAlignment.Center,
-        //        LineAlignment = StringAlignment.Center
-        //    };
-        //    g.DrawString(node.Title, _mainFont, Brushes.Black, rect, stringFormat);
         }
 
         // Вспомогательный метод для скругленных углов
@@ -225,9 +205,6 @@ namespace CausalDiagram.Rendering
                 edgeThickness = 3f;
             }
 
-            //float baseWidth = isSelected ? 4f : 2f;
-            //float adjustedWidth = baseWidth / zoom;
-
             float baseThickness = isSelected ? 4f : 2f;
             float currentPenWidth = baseThickness / zoom;
 
@@ -238,12 +215,9 @@ namespace CausalDiagram.Rendering
             float finalCapW = worldArrowW / currentPenWidth;
             float finalCapH = worldArrowH / currentPenWidth;
 
-            //// ВЫБОР ЦВЕТА: если выделено — рисуем синим и толстым, если нет — серым
-            //Color penColor = isSelected ? Color.DodgerBlue : Color.Gray;
-
 
             // 3. Рисуем стрелку между этими точками
-            using (var pen = new Pen(edgeColor, edgeThickness/*Color.Gray, 2f*/))
+            using (var pen = new Pen(edgeColor, edgeThickness))
             {
                 if (!isMinimap)
                 {

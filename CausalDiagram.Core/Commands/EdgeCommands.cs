@@ -33,16 +33,12 @@ namespace CausalDiagram.Core.Commands
             _diagram = diagram;
             //сам объект
             _edge = edge;
-            //копия ребра
-            //_edge = new Edge { Id = edge.Id, From = edge.From, To = edge.To };
         }
 
         public void Execute()
         {
             //именно этот объект
             _diagram.Edges.Remove(_edge);
-            //var existing = _diagram.Edges.FirstOrDefault(e => e.Id == _edge.Id);
-            //if (existing != null) _diagram.Edges.Remove(existing);
         }
 
         public void Undo()
@@ -52,10 +48,6 @@ namespace CausalDiagram.Core.Commands
             {
                 _diagram.Edges.Add(_edge);
             }
-            //if (!_diagram.Edges.Any(e => e.Id == _edge.Id))
-            //{
-            //    _diagram.Edges.Add(_edge);
-            //}
         }
     }
 }

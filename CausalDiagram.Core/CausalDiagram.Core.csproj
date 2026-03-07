@@ -112,10 +112,12 @@
     <Compile Include="Models\Node.cs" />
     <Compile Include="Models\NodeCategory.cs" />
     <Compile Include="Models\NodeColor.cs" />
+    <Compile Include="Models\TraceResult.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rendering\DiagramRenderer.cs" />
     <Compile Include="Services\ProjectService.cs" />
+    <Compile Include="Services\TraceAnalyzer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

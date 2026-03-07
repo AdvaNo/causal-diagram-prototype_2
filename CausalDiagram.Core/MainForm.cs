@@ -12,7 +12,9 @@ using CausalDiagram.Commands;
 using System.Drawing.Drawing2D;
 using System.IO;// Для работы с файлами
 using System.Text.Json; // Для JSON
-using System.Xml.Serialization; // Для XML
+using System.Xml.Serialization;
+using CausalDiagram.Core.Services; // Для XML
+
 
 
 
@@ -27,6 +29,7 @@ namespace CausalDiagram.Core
         private PropertyGrid _propertyGrid;
         private Edge _selectedEdge;
         private ClipboardData _diagramClipboard;
+        private Node _selectedNode;
 
         // Новые сервисы 
         private readonly ProjectService _projectService = new ProjectService();
@@ -76,6 +79,8 @@ namespace CausalDiagram.Core
         private ToolStripButton btnUndo;
         private ToolStripButton btnRedo;
         private ToolStripButton newFileButton;
+        private ToolStripButton btnTraceAnalyzer;
+
 
         //статусы зума и наличия
         private ToolStripStatusLabel lblCount;
@@ -85,7 +90,10 @@ namespace CausalDiagram.Core
         private PointF _currentMouseWorldPos;
 
         // Поле для хранения ссылки на активный редактор при двойной клик
-        private TextBox _currentEditBox = null; 
+        private TextBox _currentEditBox = null;
+
+        // Текущий результат анализа причин для трассировки
+        private TraceResult _activeTrace = null; 
 
         public MainForm()
         {
@@ -114,51 +122,24 @@ namespace CausalDiagram.Core
             // 2. Кнопка "Выбрать" (курсор)
             btnSelect = new ToolStripButton("Выбрать") { CheckOnClick = true, Checked = true };
             btnSelect.Click += (s, e) => SetMode(btnSelect, EditorMode.Select);
-            //btnSelect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Select;
 
             // 3. Кнопка "Добавить узел"
             btnAdd = new ToolStripButton("Новый узел") { CheckOnClick = true };
             btnAdd.Click += (s, e) => SetMode(btnAdd, EditorMode.AddNode);
-            //btnAdd.Click += (s, e) => _interaction.CurrentMode = EditorMode.AddNode;
 
-            //// 4. Логика взаимоисключения кнопок (чтобы нельзя было выбрать обе сразу)
-            //btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) btnAdd.Checked = false; };
-            //btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) btnSelect.Checked = false; };
-            //btnSelect.Click += (s, e) => SetMode(btnSelect);
-            //btnAdd.Click += (s, e) => SetMode(btnAdd);
-            // Добавляем всё на панель
-            //toolStrip.Items.AddRange(new ToolStripItem[] { btnSelect, btnAdd, new ToolStripSeparator(), btnSave, btnLoad });
-            // Добавляем панель в форму (она сама прилипнет к верху)
-            //this.Controls.Add(toolStrip);
 
-            // 1. Создаем кнопку
             btnConnect = new ToolStripButton("Провести связь") { CheckOnClick = true };
             btnConnect.Click += (s, e) => SetMode(btnConnect, EditorMode.Connect);
-            //btnConnect.Click += (s, e) => _interaction.CurrentMode = EditorMode.Connect;
-            // 2. Добавляем её в логику взаимоисключения (чтобы только одна кнопка была нажата)
-            //btnConnect.CheckedChanged += (s, e) => {
-            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            //};
-            // Не забудь добавить проверку для других кнопок, чтобы они выключали btnConnect!
-            //btnSelect.CheckedChanged += (s, e) => { if (btnSelect.Checked) { btnAdd.Checked = false; btnConnect.Checked = false; } };
-            //btnAdd.CheckedChanged += (s, e) => { if (btnAdd.Checked) { btnSelect.Checked = false; btnConnect.Checked = false; } };
-            // 3. Добавь кнопку на панель
-            //toolStrip.Items.Insert(2, btnConnect); // Вставляем после кнопки "Новый узел"
+
+            btnTraceAnalyzer = new ToolStripButton("Узнать причину");
+            btnTraceAnalyzer.Click += (s, e) => AnalyzeNodeCauses(_selectedNode);
 
             btnDelete = new ToolStripButton("Удалить");
             btnDelete.Click += (s, e) => DeleteSelectedItems();
 
-            //btnDelete.CheckedChanged += (s, e) => {
-            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            //};
-            //toolStrip.Items.Insert(3, btnDelete);
 
             btnUndo = new ToolStripButton("Отменить");
             btnUndo.Click += (s, e) => { _commandManager.Undo(); canvas.Invalidate(); };
-            //btnUndo.CheckedChanged += (s, e) => {
-            //    if (btnConnect.Checked) { btnSelect.Checked = false; btnAdd.Checked = false; }
-            //};
-            //toolStrip.Items.Insert(4, btnUndo);
 
             // 5. Кнопки Сохранить/Загрузить
             btnSave = new ToolStripButton("Сохранить");
@@ -169,10 +150,9 @@ namespace CausalDiagram.Core
 
             newFileButton = new ToolStripButton("Новый файл") { CheckOnClick = true };
             newFileButton.Click += (s, e) => NewDiagram();
-            //toolStrip.Items.Insert(5, newFileButton);
 
             toolStrip.Items.AddRange(new ToolStripItem[] {
-                btnSelect, btnAdd, btnConnect,
+                btnSelect, btnAdd, btnConnect, btnTraceAnalyzer,
                 new ToolStripSeparator(),
                 btnDelete, btnUndo,
                 new ToolStripSeparator(),
@@ -273,7 +253,7 @@ namespace CausalDiagram.Core
                         g.Transform = matrix;
 
                         // 3. Рисуем диаграмму В БУФЕР
-                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep);
+                        _renderer.Render(g, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep, _activeTrace);
 
                         g.ResetTransform();
                     }
@@ -297,6 +277,7 @@ namespace CausalDiagram.Core
                 var p = ScreenToCanvas(e.Location);
 
                 _selectedEdge = FindEdgeAt(p); // Вызываем метод поиска
+
 
                 Node nodeAtMouse = null;
 
@@ -343,6 +324,9 @@ namespace CausalDiagram.Core
                 {
                     if (nodeAtMouse == null) // Кликнули по пустому месту
                     {
+                        _activeTrace = null;
+                        canvas.Invalidate();
+
                         var newNode = new Node
                         {
                             Title = "Новый фактор",
@@ -365,13 +349,16 @@ namespace CausalDiagram.Core
 
                 if (nodeAtMouse != null)
                 {
+                    _selectedNode = nodeAtMouse; //для анализа
                     _propertyGrid.SelectedObject = nodeAtMouse; // Показываем свойства узла
                     _propertyGrid.Visible = true; // Показываем, если выбрали узел
                 }
                 else
                 {
+                    _selectedNode = null;
                     _propertyGrid.SelectedObject = null;
                     _propertyGrid.Visible = false;// Скрываем, если кликнули по пустому месту
+                    _activeTrace = null;
                 }
 
                 canvas.Invalidate();
@@ -513,7 +500,7 @@ namespace CausalDiagram.Core
 
                 // Теперь Renderer просто рисует в своих обычных координатах, 
                 // а GDI+ сама их масштабирует и двигает
-                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep);
+                _renderer.Render(e.Graphics, _diagram, _interaction.SelectedNodeIds, _selectedEdge, _zoom, _panOffset, _showGrid, GridStep, _activeTrace);
 
                 //превью стрелок
                 if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
@@ -878,7 +865,7 @@ namespace CausalDiagram.Core
                 var fromNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.From);
                 var toNode = _diagram.Nodes.FirstOrDefault(n => n.Id == edge.To);
                 bool isEdgeSelected = (edge == _selectedEdge);
-                _renderer.DrawConnection(g, fromNode, toNode, isEdgeSelected, _zoom);
+                _renderer.DrawConnection(g, fromNode, toNode, edge, isEdgeSelected, _zoom, _activeTrace);
             }
             // Рисуем временную линию связи
             if (_interaction.CurrentMode == EditorMode.Connect && _interaction.StartNodeForConnection != null)
@@ -1326,7 +1313,7 @@ namespace CausalDiagram.Core
                     g.TranslateTransform(-minX, -minY);
 
                     // Используем твой стандартный рендерер (без выделения узлов)
-                    _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, _panOffset, _showGrid, GridStep);
+                    _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, _panOffset, _showGrid, GridStep, _activeTrace);
                 }
 
                 // 3. Сохраняем файл
@@ -1510,7 +1497,7 @@ namespace CausalDiagram.Core
             g.TranslateTransform(-minX, -minY);
 
             // 6. РЕНДЕР (без выделения и сетки)
-            _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, new PointF(0, 0), false, 20);
+            _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, new PointF(0, 0), false, 20, _activeTrace);
 
             using (Pen viewPen = new Pen(Color.FromArgb(180, Color.DodgerBlue), 1f))
             using (SolidBrush viewBrush = new SolidBrush(Color.FromArgb(20, Color.DodgerBlue)))
@@ -1551,6 +1538,60 @@ namespace CausalDiagram.Core
             // Обновляем текст
             lblCount.Text = $"Узлов: {_diagram.Nodes.Count} | Связей: {_diagram.Edges.Count}";
             lblZoom.Text = $"Зум: {Math.Round(_zoom * 100)}%";
+        }
+
+
+        private void AnalyzeNodeCauses(Node node)
+        {
+            if (node == null)
+            {
+                MessageBox.Show("Сначала выберите узел, для которого хотите найти причины.", "Узел не выбран");
+                return;
+            }
+
+            // 1. Запускаем наш сервис поиска
+            _activeTrace = TraceAnalyzer.Analyze(_diagram, node);
+
+            // 2. Перерисовываем холст, чтобы увидеть подсвеченные стрелки
+            canvas.Invalidate();
+
+            // 3. Формируем и показываем отчет
+            ShowTraceReport(_activeTrace);
+        }
+        private void ShowTraceReport(TraceResult result)
+        {
+            if (!result.HasCauses)
+            {
+                MessageBox.Show("Для данного фактора не найдено входящих причин.", "Анализ завершен");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"--- ОТЧЕТ О ТРАССИРОВКЕ ПРИЧИН ---");
+            sb.AppendLine($"Цель: {result.TargetNode.Title}");
+            sb.AppendLine($"Количество найденных первопричин: {result.RootCauses.Count}");
+            sb.AppendLine();
+
+            sb.AppendLine("СПИСОК ПЕРВОПРИЧИН:");
+            foreach (var cause in result.RootCauses)
+            {
+                sb.AppendLine($"• {cause.Title}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("ЦЕПОЧКИ ВЛИЯНИЯ:");
+            foreach (var path in result.PathDescriptions)
+            {
+                sb.AppendLine(path);
+            }
+
+            if (result.HasCycle)
+            {
+                sb.AppendLine();
+                sb.AppendLine("⚠️ ВНИМАНИЕ: В графе обнаружены циклы! Некоторые пути могут быть зациклены.");
+            }
+
+            MessageBox.Show(sb.ToString(), "Результат анализа причин", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }
 }

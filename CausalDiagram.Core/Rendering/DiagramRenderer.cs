@@ -65,7 +65,7 @@ namespace CausalDiagram.Rendering
             return new RectangleF(node.X - size.Width / 2f, node.Y - size.Height / 2f, size.Width, size.Height);
         }
 
-        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom, PointF panOffset, bool showGrid, int gridStep)
+        public void Render(Graphics g, Diagram diagram, HashSet<Guid> selectedNodeIds, Edge selectedEdge, float zoom, PointF panOffset, bool showGrid, int gridStep, TraceResult activeTrace)
         {
             //if (showGrid)
             //{
@@ -81,7 +81,7 @@ namespace CausalDiagram.Rendering
                 if (fromNode != null && toNode != null)
                 {
                     bool isEdgeSelected = (edge == selectedEdge);
-                    DrawConnection(g, fromNode, toNode, isEdgeSelected,zoom);
+                    DrawConnection(g, fromNode, toNode, selectedEdge, isEdgeSelected,zoom, activeTrace);
                 }
             }
 
@@ -191,7 +191,7 @@ namespace CausalDiagram.Rendering
         }
 
         //СТРЕЛКИ
-        public void DrawConnection(Graphics g, Node from, Node to, bool isSelected/* = false*/, float zoom)
+        public void DrawConnection(Graphics g, Node from, Node to, Edge edge, bool isSelected/* = false*/, float zoom, TraceResult activeTrace)
         {
             if (from == null || to == null) return;
 
@@ -206,8 +206,24 @@ namespace CausalDiagram.Rendering
             //для мини-карты
             bool isMinimap = g.Transform.Elements[0] < 0.2f;
 
-            Color edgeColor = isSelected ? Color.DodgerBlue : Color.Black; // Красный как у узлов
-            float edgeThickness = isSelected ? 3f : 2f; // Чуть толще при выделении
+            // Проверяем, участвует ли эта связь в трассировке
+            
+            bool isHighlighted = activeTrace != null && edge != null && activeTrace.PathEdgeIds.Contains(edge.Id);
+
+            //Color edgeColor = isSelected ? Color.DodgerBlue : Color.Black; // Красный как у узлов
+            //float edgeThickness = isSelected ? 3f : 2f; // Чуть толще при выделении
+            Color edgeColor = Color.Black;
+            float edgeThickness = 2f;
+            if (isHighlighted)
+            {
+                edgeColor = Color.OrangeRed; // Цвет трассировки
+                edgeThickness = 4f;          // Делаем толще
+            }
+            else if (isSelected)
+            {
+                edgeColor = Color.DodgerBlue; //выделение
+                edgeThickness = 3f;
+            }
 
             //float baseWidth = isSelected ? 4f : 2f;
             //float adjustedWidth = baseWidth / zoom;
@@ -234,13 +250,7 @@ namespace CausalDiagram.Rendering
                     float capW = finalCapW;
                     float capH = finalCapH;
 
-                    // Если хочешь, чтобы стрелка НЕ росла вместе с толщиной линии:
-                    // float capW = 8f / edgeThickness; 
-                    // float capH = 12f / edgeThickness;
-
                     pen.CustomEndCap = new AdjustableArrowCap(capW, capH, true);
-
-                    
                 }
                 else 
                 {
@@ -249,34 +259,7 @@ namespace CausalDiagram.Rendering
 
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 g.DrawLine(pen, startPoint, endPoint);
-                //if (finalCapW > 0.01f && finalCapH > 0.01f)
-                //{
-                //    pen.CustomEndCap = new AdjustableArrowCap(finalCapW, finalCapH, true);
-                //}
-                //g.SmoothingMode = SmoothingMode.AntiAlias;
-                //g.DrawLine(pen, startPoint, endPoint);
-                //float capW = finalCapW;
-                //float capH = finalCapH;
-
-                //// Если хочешь, чтобы стрелка НЕ росла вместе с толщиной линии:
-                //// float capW = 8f / edgeThickness; 
-                //// float capH = 12f / edgeThickness;
-
-                //pen.CustomEndCap = new AdjustableArrowCap(capW, capH, true);
-
-                //g.SmoothingMode = SmoothingMode.AntiAlias;
-                //g.DrawLine(pen, startPoint, endPoint);
             }
-
-            
-            //float penWidth = isSelected ? 4f : 2f;
-
-            //using (var pen = new Pen(penColor, penWidth))
-            //{
-            //    pen.CustomEndCap = new AdjustableArrowCap(6, 12, true);
-            //    g.DrawLine(pen, startPoint, endPoint);
-            //}
-
         }
     }
 }

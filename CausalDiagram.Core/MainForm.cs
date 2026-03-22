@@ -755,7 +755,6 @@ namespace CausalDiagram.Core
                 canvas.Invalidate(); // Перерисовываем холст, чтобы увидеть изменения
                 return true; // Говорим системе, что мы сами обработали нажатие
             }
-
             // Обработка Ctrl + Y (Redo)
             if (keyData == (Keys.Control | Keys.Y))
             {
@@ -763,28 +762,24 @@ namespace CausalDiagram.Core
                 canvas.Invalidate();
                 return true;
             }
-
             // Обработка Delete
             if (keyData == Keys.Delete)
             {
                 DeleteSelectedItems();
                 return true;
             }
-
             // --- Копирование (Ctrl + C) ---
             if (keyData == (Keys.Control | Keys.C))
             {
                 CopySelected();
                 return true;
             }
-
             // --- Вставка (Ctrl + V) ---
             if (keyData == (Keys.Control | Keys.V))
             {
                 Paste();
                 return true;
             }
-
             return base.ProcessCmdKey(ref msg, keyData);
         }
         private void SetMode(ToolStripButton activeMode, EditorMode mode)
@@ -1225,13 +1220,18 @@ namespace CausalDiagram.Core
             if (_diagram.Nodes.Count == 0) return;
 
             // 1. Считаем реальный размер схемы, чтобы на картинке не было пустоты
-            float minX = _diagram.Nodes.Min(n => n.X) - 40;
-            float minY = _diagram.Nodes.Min(n => n.Y) - 40;
+            float minX = _diagram.Nodes.Min(n => n.X) /*- 40*/;
+            float minY = _diagram.Nodes.Min(n => n.Y) /*- 40*/;
             float maxX = _diagram.Nodes.Max(n => n.X + 170); // 150 ширина + запас
             float maxY = _diagram.Nodes.Max(n => n.Y + 100); // 80 высота + запас
 
-            int width = Math.Max(1, (int)(maxX - minX));
-            int height = Math.Max(1, (int)(maxY - minY));
+            int padding = 200;
+
+            //int width = Math.Max(1, (int)(maxX - minX));
+            //int height = Math.Max(1, (int)(maxY - minY));
+
+            int width = (int)(maxX - minX) + padding * 2;
+            int height = (int)(maxY - minY) + padding * 2;
 
             // 2. Рисуем на виртуальном холсте (Bitmap)
             using (Bitmap bmp = new Bitmap(width, height))
@@ -1243,7 +1243,7 @@ namespace CausalDiagram.Core
                     g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
                     // Смещаем камеру так, чтобы самый левый верхний узел был в углу картинки
-                    g.TranslateTransform(-minX, -minY);
+                    g.TranslateTransform(-minX + padding, -minY + padding);
 
                     // Используем твой стандартный рендерер (без выделения узлов)
                     _renderer.Render(g, _diagram, new HashSet<Guid>(), null, 1.0f, _panOffset, _showGrid, GridStep, _activeTrace);

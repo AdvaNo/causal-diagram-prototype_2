@@ -14,7 +14,7 @@ using System.IO;// Для работы с файлами
 using System.Text.Json; // Для JSON
 using System.Xml.Serialization;
 using CausalDiagram.Core.Services; // Для XML
-
+using System.Diagnostics;
 
 
 
@@ -80,7 +80,8 @@ namespace CausalDiagram.Core
         private ToolStripButton btnRedo;
         private ToolStripButton newFileButton;
         private ToolStripButton btnTraceAnalyzer;
-
+        //справка кнопка
+        private ToolStripButton btnHelp;
 
         //статусы зума и наличия
         private ToolStripStatusLabel lblCount;
@@ -148,12 +149,17 @@ namespace CausalDiagram.Core
             newFileButton = new ToolStripButton("Новый файл") { CheckOnClick = true };
             newFileButton.Click += (s, e) => NewDiagram();
 
+            btnHelp = new ToolStripButton("Справка");
+            btnHelp.Alignment = ToolStripItemAlignment.Right;
+            btnHelp.Click += (s, e) => OpenHelpManual();
+
             toolStrip.Items.AddRange(new ToolStripItem[] {
                 btnSelect, btnAdd, btnConnect, btnTraceAnalyzer,
                 new ToolStripSeparator(),
                 btnDelete, btnUndo,
                 new ToolStripSeparator(),
-                btnSave, btnLoad, newFileButton
+                btnSave, btnLoad, newFileButton,
+                btnHelp
             });
 
             this.Controls.Add(toolStrip);
@@ -779,6 +785,12 @@ namespace CausalDiagram.Core
             {
                 Paste();
                 return true;
+            }
+            // F1
+            if (keyData == Keys.F1)
+            {
+                OpenHelpManual(); // Запускаем справку
+                return true;      
             }
             return base.ProcessCmdKey(ref msg, keyData);
         }
@@ -1521,6 +1533,39 @@ namespace CausalDiagram.Core
             }
 
             MessageBox.Show(sb.ToString(), "Результат анализа причин", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Универсальный метод для открытия руководства пользователя
+        /// </summary>
+        private void OpenHelpManual()
+        {
+            // Application.StartupPath - это папка, откуда запущен твой .exe
+            string filePath = Path.Combine(Application.StartupPath, "UserGuide.pdf");
+
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    // Начиная с .NET Core / .NET 5+, чтобы открыть файл стандартной 
+                    // программой Windows, нужно явно указать UseShellExecute = true
+                    var processInfo = new ProcessStartInfo(filePath)
+                    {
+                        UseShellExecute = true
+                    };
+                    Process.Start(processInfo);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Не удалось открыть справку. Ошибка: {ex.Message}",
+                                    "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else
+            {
+                MessageBox.Show("Файл справки (UserGuide.pdf) не найден в папке с программой.",
+                                "Справка отсутствует", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
     }
 }
